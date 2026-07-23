@@ -24,7 +24,7 @@ vi.mock('../../src/utils/canvas', () => ({
 }));
 
 vi.mock('lucide-react', () => {
-  const names = ['Plus', 'Sparkles', 'Bot', 'Wand2', 'Send', 'ZoomIn', 'FileText', 'Loader2', 'Check', 'ChevronDown', 'ChevronUp', 'X'] as const;
+  const names = ['Plus', 'Sparkles', 'Bot', 'Wand2', 'Send', 'ZoomIn', 'FileText', 'Loader2', 'Check', 'ChevronDown', 'ChevronUp', 'X', 'Mic', 'MicOff'] as const;
   const icons: Record<string, React.FC> = {};
   for (const name of names) {
     icons[name] = (props: Record<string, unknown>) => {

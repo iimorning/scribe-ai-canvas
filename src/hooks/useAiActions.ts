@@ -78,12 +78,16 @@ export function useAiActions({
 
   const THREAD_GAP = 24;
 
+  // streamingAiNodeId is intentionally included: voice-writing mode and follow-up threads both
+  // mutate it without holding isToolbarAiLoading, so omitting it would let the toolbar launch a
+  // second concurrent AI run that races on the same flag.
   const isAnyAiBusy =
     isPublishing ||
     isToolbarAiLoading ||
     isToolbarIntentPreflight ||
     analyzingAgentNodeId !== null ||
     followUpParentId !== null ||
+    streamingAiNodeId !== null ||
     intentClarification !== null;
 
   const handlePublish = async () => {
@@ -261,7 +265,16 @@ export function useAiActions({
 
   const handleAiSubmit = async () => {
     const raw = aiPrompt.trim();
-    if (!raw || isPublishing || isToolbarAiLoading || isToolbarIntentPreflight || analyzingAgentNodeId !== null || followUpParentId !== null || intentClarification !== null) {
+    if (
+      !raw ||
+      isPublishing ||
+      isToolbarAiLoading ||
+      isToolbarIntentPreflight ||
+      analyzingAgentNodeId !== null ||
+      followUpParentId !== null ||
+      streamingAiNodeId !== null ||
+      intentClarification !== null
+    ) {
       return;
     }
 
@@ -333,7 +346,7 @@ export function useAiActions({
   const submitAiThreadFollowUp = async (parentNodeId: string, userMessage: string) => {
     const trimmed = userMessage.trim();
     if (!trimmed || followUpGuardRef.current) return;
-    if (isPublishing || isToolbarAiLoading || analyzingAgentNodeId !== null || followUpParentId !== null) return;
+    if (isPublishing || isToolbarAiLoading || analyzingAgentNodeId !== null || followUpParentId !== null || streamingAiNodeId !== null) return;
 
     const parent = dynamicNodes.find((n) => n.id === parentNodeId);
     if (!parent || parent.type !== 'ai') return;

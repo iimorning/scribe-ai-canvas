@@ -3,8 +3,45 @@
  */
 
 export type MicCapture = {
-  stop: () => void;
+  stop: () => Promise<void>;
 };
+
+/**
+ * Like `navigator.mediaDevices.getUserMedia(...)` but cancellable. `getUserMedia` itself
+ * doesn't honor AbortSignal — we pipe through `signal` so a stop() that races with a still-
+ * pending capture can short-circuit before the user gets a "permission denied" microtask storm.
+ */
+function getUserMediaCancellable(
+  constraints: MediaStreamConstraints,
+  signal: AbortSignal,
+): Promise<MediaStream> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException('Aborted', 'AbortError'));
+      return;
+    }
+    const onAbort = () => {
+      signal.removeEventListener('abort', onAbort);
+      reject(new DOMException('Aborted', 'AbortError'));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    navigator.mediaDevices
+      .getUserMedia(constraints)
+      .then((stream) => {
+        signal.removeEventListener('abort', onAbort);
+        if (signal.aborted) {
+          for (const track of stream.getTracks()) track.stop();
+          reject(new DOMException('Aborted', 'AbortError'));
+          return;
+        }
+        resolve(stream);
+      })
+      .catch((err) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(err);
+      });
+  });
+}
 
 function downsampleTo16k(input: Float32Array, inputSampleRate: number): Float32Array {
   if (inputSampleRate === 16000) return input;
@@ -29,14 +66,18 @@ function floatTo16BitPcm(float32: Float32Array): Uint8Array {
 }
 
 export async function startMicCapture(onPcm: (pcm: Uint8Array) => void): Promise<MicCapture> {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      channelCount: 1,
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
+  const abort = new AbortController();
+  const stream = await getUserMediaCancellable(
+    {
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
     },
-  });
+    abort.signal,
+  );
 
   const audioCtx = new AudioContext();
   const source = audioCtx.createMediaStreamSource(stream);
@@ -57,16 +98,42 @@ export async function startMicCapture(onPcm: (pcm: Uint8Array) => void): Promise
   processor.connect(mute);
   mute.connect(audioCtx.destination);
 
+  let stopped = false;
   return {
-    stop() {
+    async stop() {
+      if (stopped) return;
+      stopped = true;
+      // Signal the still-pending getUserMedia (if any) — once everything is resolved this is
+      // a no-op, but it prevents a half-resolved capture from injecting a callback after stop.
+      abort.abort();
+      // Disconnect the entire audio graph BEFORE closing the context so the nodes aren't
+      // retained by the context's node graph during teardown. ScriptProcessor and mute both
+      // hold references; the destination-attached mute in particular would otherwise linger.
       try {
         processor.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+      try {
         source.disconnect();
       } catch {
-        /* ignore */
+        /* already disconnected */
       }
-      void audioCtx.close();
+      try {
+        mute.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+      // Release the mic tracks synchronously so the OS-level mic indicator turns off even if
+      // the AudioContext close promise is still in flight.
       for (const track of stream.getTracks()) track.stop();
+      // Await the close so a subsequent startMicCapture can open a fresh context without
+      // racing toward the browser's per-page AudioContext quota.
+      try {
+        await audioCtx.close();
+      } catch {
+        /* context may already be closed */
+      }
     },
   };
 }

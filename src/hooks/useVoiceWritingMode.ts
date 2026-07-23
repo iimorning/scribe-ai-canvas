@@ -49,7 +49,6 @@ export function useVoiceWritingMode({
   const [voicePhase, setVoicePhase] = useState<VoicePhase>('idle');
 
   const activeRef = useRef(false);
-  const phaseRef = useRef<VoicePhase>('idle');
   const turnIndexRef = useRef(0);
   const currentUserNoteIdRef = useRef<string | null>(null);
   const lastAnchorRef = useRef<{ x: number; y: number } | null>(null);
@@ -58,25 +57,40 @@ export function useVoiceWritingMode({
   const ttsRef = useRef<ReturnType<typeof createTtsSentenceQueue> | null>(null);
   const handlingUtteranceRef = useRef(false);
   const pausedListeningRef = useRef(false);
+  // Synchronous gate: voiceModeActive is React state and lags behind ref writes by one tick,
+  // so a fast double-click observes the same `false` in both closures and would launch two
+  // sessions. `startingRef` is a ref so the second click sees `true` immediately.
+  const startingRef = useRef(false);
 
   const setPhase = (p: VoicePhase) => {
-    phaseRef.current = p;
     setVoicePhase(p);
   };
 
-  const stopListeningHardware = useCallback(() => {
+  const teardownSession = useCallback(async () => {
+    const promises: Promise<void>[] = [];
     try {
       asrRef.current?.close();
     } catch {
       /* ignore */
     }
     asrRef.current = null;
+    if (micRef.current) {
+      promises.push(
+        micRef.current.stop().catch(() => {
+          /* best effort */
+        }),
+      );
+      micRef.current = null;
+    }
     try {
-      micRef.current?.stop();
+      ttsRef.current?.stop();
     } catch {
       /* ignore */
     }
-    micRef.current = null;
+    ttsRef.current = null;
+    if (promises.length > 0) {
+      await Promise.all(promises);
+    }
   }, []);
 
   const focusNode = useCallback(
@@ -87,10 +101,40 @@ export function useVoiceWritingMode({
     [setCanvasTransform, transformRef],
   );
 
+  async function rollbackOnStartFailure(e: unknown): Promise<void> {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[Spoor] startVoiceMode failed', msg);
+    void appAlert({
+      message: /Permission|NotAllowed|麦克风|microphone/i.test(msg)
+        ? t('voice.mic_denied')
+        : t('voice.asr_error', { message: msg }),
+    });
+    startingRef.current = false;
+    activeRef.current = false;
+    await teardownSession();
+    setVoiceModeActive(false);
+    setStreamingAiNodeId(null);
+    setPhase('idle');
+    exitFullscreen();
+  }
+
+  const stopVoiceMode = useCallback(() => {
+    activeRef.current = false;
+    pausedListeningRef.current = true;
+    handlingUtteranceRef.current = false;
+    startingRef.current = false;
+    void teardownSession().finally(() => {
+      setStreamingAiNodeId(null);
+      setVoiceModeActive(false);
+      setPhase('idle');
+      exitFullscreen();
+    });
+  }, [exitFullscreen, setStreamingAiNodeId, teardownSession]);
+
   const startListeningLoop = useCallback(async () => {
     if (!activeRef.current) return;
 
-    stopListeningHardware();
+    await teardownSession();
 
     const creds = {
       apiKey: aiConfig.volcAsrApiKey,
@@ -105,49 +149,56 @@ export function useVoiceWritingMode({
       if (!trimmed) return;
       handlingUtteranceRef.current = true;
       pausedListeningRef.current = true;
-      stopListeningHardware();
+      void teardownSession();
       void runAiTurn(trimmed).finally(() => {
         handlingUtteranceRef.current = false;
       });
     };
 
-    try {
-      const session = openVolcAsrSession(creds, {
-        onPartial: (partial) => {
-          if (!activeRef.current || pausedListeningRef.current) return;
-          const id = currentUserNoteIdRef.current;
-          if (id) void db.nodes.update(id, { content: partial });
-        },
-        onDefinite: handleDefinite,
-        onError: (message) => {
-          if (!activeRef.current) return;
-          console.error('[Spoor] Volc ASR', message);
-          void appAlert({ message: t('voice.asr_error', { message }) });
-        },
-      });
-      asrRef.current = session;
+    const session = openVolcAsrSession(creds, {
+      onPartial: (partial) => {
+        if (!activeRef.current || pausedListeningRef.current) return;
+        const id = currentUserNoteIdRef.current;
+        if (id) void db.nodes.update(id, { content: partial });
+      },
+      onDefinite: handleDefinite,
+      onError: (message) => {
+        if (!activeRef.current) return;
+        console.error('[Spoor] Volc ASR', message);
+        void appAlert({ message: t('voice.asr_error', { message }) });
+        // The session is gone — surface this as a stop so the hook returns to idle.
+        stopVoiceMode();
+      },
+    });
+    asrRef.current = session;
 
-      const mic = await startMicCapture((pcm) => {
+    let mic: MicCapture;
+    try {
+      mic = await startMicCapture((pcm) => {
         if (!activeRef.current || pausedListeningRef.current) return;
         asrRef.current?.sendPcm(pcm);
       });
-      micRef.current = mic;
-      setPhase('listening');
-      pausedListeningRef.current = false;
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.error('[Spoor] startListeningLoop', msg);
-      void appAlert({
-        message: /Permission|NotAllowed|麦克风|microphone/i.test(msg)
-          ? t('voice.mic_denied')
-          : t('voice.asr_error', { message: msg }),
-      });
-      activeRef.current = false;
-      setVoiceModeActive(false);
-      setPhase('idle');
-      stopListeningHardware();
-      exitFullscreen();
+      if (!activeRef.current) return;
+      await rollbackOnStartFailure(e);
+      return;
     }
+
+    // Race: user may have toggled off while getUserMedia was awaiting. If `activeRef` is now
+    // false, immediately release the new mic instead of installing it.
+    if (!activeRef.current) {
+      await mic.stop().catch(() => {
+        /* ignore */
+      });
+      return;
+    }
+    micRef.current = mic;
+    setPhase('listening');
+    pausedListeningRef.current = false;
+    // Voice mode is now fully booted: release the synchronous startingRef so the next click
+    // on the toolbar mic button can call stopVoiceMode() instead of being ignored as a
+    // duplicate. Mirrors the rollback path which resets startingRef on failure/stop.
+    startingRef.current = false;
 
     async function runAiTurn(userText: string) {
       if (!activeRef.current) return;
@@ -283,28 +334,20 @@ export function useVoiceWritingMode({
     appAlert,
     exitFullscreen,
     focusNode,
+    rollbackOnStartFailure,
     setEditingNodeId,
     setStreamingAiNodeId,
-    stopListeningHardware,
+    stopVoiceMode,
     t,
+    teardownSession,
     transformRef,
   ]);
 
-  const stopVoiceMode = useCallback(() => {
-    activeRef.current = false;
-    pausedListeningRef.current = true;
-    handlingUtteranceRef.current = false;
-    ttsRef.current?.stop();
-    ttsRef.current = null;
-    stopListeningHardware();
-    setStreamingAiNodeId(null);
-    setVoiceModeActive(false);
-    setPhase('idle');
-    exitFullscreen();
-  }, [exitFullscreen, setStreamingAiNodeId, stopListeningHardware]);
-
   const startVoiceMode = useCallback(async () => {
+    // Synchronous guard so back-to-back clicks can't both start.
+    if (startingRef.current) return;
     if (voiceModeActive || isAnyAiBusy) return;
+    startingRef.current = true;
 
     const asrOk = hasVolcAsrCredentials({
       apiKey: aiConfig.volcAsrApiKey,
@@ -312,10 +355,12 @@ export function useVoiceWritingMode({
       accessToken: aiConfig.volcAsrAccessToken,
     });
     if (!asrOk) {
+      startingRef.current = false;
       void appAlert({ message: t('voice.need_asr_keys') });
       return;
     }
     if (!(aiConfig.minimaxApiKey || '').trim()) {
+      startingRef.current = false;
       void appAlert({ message: t('voice.need_minimax_key') });
       return;
     }
@@ -326,29 +371,39 @@ export function useVoiceWritingMode({
     handlingUtteranceRef.current = false;
     enterFullscreen();
 
-    const { x, y } = getCanvasCenterPosition(transformRef.current);
-    const userNoteId = crypto.randomUUID();
-    await db.nodes.add({
-      id: userNoteId,
-      canvasId: activeCanvasId,
-      type: 'text',
-      content: '',
-      x,
-      y,
-    });
-    currentUserNoteIdRef.current = userNoteId;
-    lastAnchorRef.current = { x, y };
-    setEditingNodeId(userNoteId);
-    focusNode(x, y);
+    try {
+      const { x, y } = getCanvasCenterPosition(transformRef.current);
+      const userNoteId = crypto.randomUUID();
+      await db.nodes.add({
+        id: userNoteId,
+        canvasId: activeCanvasId,
+        type: 'text',
+        content: '',
+        x,
+        y,
+      });
+      currentUserNoteIdRef.current = userNoteId;
+      lastAnchorRef.current = { x, y };
+      setEditingNodeId(userNoteId);
+      focusNode(x, y);
 
-    await startListeningLoop();
+      try {
+        await startListeningLoop();
+      } catch (e) {
+        await rollbackOnStartFailure(e);
+      }
+    } catch (e) {
+      await rollbackOnStartFailure(e);
+    }
   }, [
     activeCanvasId,
     aiConfig,
     appAlert,
     enterFullscreen,
+    exitFullscreen,
     focusNode,
     isAnyAiBusy,
+    rollbackOnStartFailure,
     setEditingNodeId,
     startListeningLoop,
     t,
@@ -357,17 +412,27 @@ export function useVoiceWritingMode({
   ]);
 
   const toggleVoiceMode = useCallback(() => {
-    if (voiceModeActive) stopVoiceMode();
-    else void startVoiceMode();
+    if (startingRef.current) return; // mid-startup click — let the in-flight start resolve
+    if (voiceModeActive) {
+      stopVoiceMode();
+    } else {
+      void startVoiceMode();
+    }
   }, [startVoiceMode, stopVoiceMode, voiceModeActive]);
 
   useEffect(() => {
     return () => {
       activeRef.current = false;
-      ttsRef.current?.stop();
-      stopListeningHardware();
+      startingRef.current = false;
+      void teardownSession();
+      // Voice mode may have put the document in fullscreen; restore on unmount.
+      if (document.fullscreenElement) {
+        void document.exitFullscreen().catch(() => {
+          /* ignore */
+        });
+      }
     };
-  }, [stopListeningHardware]);
+  }, [teardownSession]);
 
   return {
     voiceModeActive,

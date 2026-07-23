@@ -6,6 +6,8 @@ import {
   encodeAudioOnlyRequest,
   encodeFullClientRequest,
   parseServerFrame,
+  parseServerFrameAsync,
+  type VolcAsrUtterance,
 } from './volcAsrProtocol';
 
 export type VolcAsrCredentials = {
@@ -51,6 +53,16 @@ export function hasVolcAsrCredentials(creds: VolcAsrCredentials): boolean {
   return !!(creds.appId ?? '').trim() && !!(creds.accessToken ?? '').trim();
 }
 
+function joinDefinite(utterances: VolcAsrUtterance[]): string {
+  // A single server frame can contain multiple finalized utterances in sequence (especially
+  // when end_window_size or max_silence is generous). Concatenate them so voice mode gets
+  // the full sentence rather than truncating after the first.
+  return utterances
+    .filter((u) => u.definite && (u.text ?? '').trim())
+    .map((u) => u.text.trim())
+    .join(' ');
+}
+
 /**
  * Open a streaming ASR session via same-origin Vite proxy (auth headers injected server-side).
  */
@@ -62,6 +74,9 @@ export function openVolcAsrSession(creds: VolcAsrCredentials, handlers: VolcAsrH
   let sequence = 1;
   let closed = false;
   let ready = false;
+  // Cap pending audio to ~256 KB so a slow upstream doesn't OOM the page while waiting for open.
+  const MAX_PENDING_BYTES = 256 * 1024;
+  let pendingBytes = 0;
   const pending: Uint8Array[] = [];
 
   const ws = new WebSocket(buildProxyWsUrl(creds));
@@ -70,6 +85,7 @@ export function openVolcAsrSession(creds: VolcAsrCredentials, handlers: VolcAsrH
   const flushPending = () => {
     while (pending.length > 0 && ready && ws.readyState === WebSocket.OPEN) {
       const chunk = pending.shift()!;
+      pendingBytes -= chunk.length;
       ws.send(encodeAudioOnlyRequest(chunk, sequence++));
     }
   };
@@ -101,25 +117,16 @@ export function openVolcAsrSession(creds: VolcAsrCredentials, handlers: VolcAsrH
     flushPending();
   };
 
-  ws.onmessage = (ev) => {
-    if (typeof ev.data === 'string') {
-      try {
-        const j = JSON.parse(ev.data) as { error?: string };
-        if (j.error) handlers.onError?.(j.error);
-      } catch {
-        handlers.onError?.(ev.data);
-      }
-      return;
-    }
-    const parsed = parseServerFrame(ev.data as ArrayBuffer);
+  const handleParsed = (parsed: ReturnType<typeof parseServerFrame>) => {
+    if (closed) return; // ignore late frames after close()
     if (parsed.errorMessage) {
       handlers.onError?.(parsed.errorMessage);
       return;
     }
 
-    const definiteUtterance = parsed.utterances.find((u) => u.definite && (u.text ?? '').trim());
-    if (definiteUtterance) {
-      handlers.onDefinite?.(definiteUtterance.text.trim());
+    const definiteText = joinDefinite(parsed.utterances);
+    if (definiteText) {
+      handlers.onDefinite?.(definiteText);
       return;
     }
 
@@ -131,8 +138,38 @@ export function openVolcAsrSession(creds: VolcAsrCredentials, handlers: VolcAsrH
     if (partial) handlers.onPartial?.(partial);
   };
 
+  ws.onmessage = (ev) => {
+    if (typeof ev.data === 'string') {
+      try {
+        const j = JSON.parse(ev.data) as { error?: string };
+        if (j.error) {
+          if (!closed) handlers.onError?.(j.error);
+        }
+      } catch {
+        if (!closed) handlers.onError?.(ev.data);
+      }
+      return;
+    }
+    const buffer = ev.data as ArrayBuffer;
+    const head = new Uint8Array(buffer, 0, Math.min(buffer.byteLength, 4));
+    const compression = head.length >= 3 ? head[2]! & 0x0f : 0;
+    if (compression === 0) {
+      handleParsed(parseServerFrame(buffer));
+    } else {
+      void parseServerFrameAsync(buffer).then((parsed) => handleParsed(parsed));
+    }
+  };
+
   ws.onerror = () => {
+    // Don't open an alert stream from the network layer alone; the upstream is responsible for
+    // surfacing errors via onError AND closing the socket so callers can clear their state.
+    if (closed) return;
     handlers.onError?.('Volc ASR WebSocket error');
+    try {
+      ws.close();
+    } catch {
+      /* ignore */
+    }
   };
 
   ws.onclose = () => {
@@ -144,7 +181,14 @@ export function openVolcAsrSession(creds: VolcAsrCredentials, handlers: VolcAsrH
     sendPcm(pcm: Uint8Array) {
       if (closed || pcm.length === 0) return;
       if (!ready || ws.readyState !== WebSocket.OPEN) {
+        // Backpressure: drop oldest chunks once the buffer fills. With a 200ms capture cadence
+        // (~6.4 KB per chunk), 256 KB ≈ 8 s of audio — enough to ride out a slow connect.
+        pendingBytes += pcm.length;
         pending.push(pcm);
+        while (pendingBytes > MAX_PENDING_BYTES && pending.length > 1) {
+          const dropped = pending.shift()!;
+          pendingBytes -= dropped.length;
+        }
         return;
       }
       ws.send(encodeAudioOnlyRequest(pcm, sequence++));
