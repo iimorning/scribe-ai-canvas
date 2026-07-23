@@ -99,27 +99,37 @@ describe('hasVolcAsrCredentials', () => {
 });
 
 describe('openVolcAsrSession', () => {
-  function init(handlers: Parameters<typeof openVolcAsrSession>[1] = {}) {
-    const session = openVolcAsrSession({ apiKey: 'k' }, handlers);
-    const ws = FakeWebSocket.instances[0]!;
+  async function init(
+    handlers: Parameters<typeof openVolcAsrSession>[1] = {},
+    opts: Parameters<typeof openVolcAsrSession>[2] = { token: 'preissued-test-token' },
+  ) {
+    const session = await openVolcAsrSession({ apiKey: 'k' }, handlers, opts);
+    const ws = FakeWebSocket.instances[FakeWebSocket.instances.length - 1]!;
     ws.fakeOpen();
     return { session, ws };
   }
 
-  it('sends a full client request as the first frame after open', () => {
-    init();
-    const ws = FakeWebSocket.instances[0]!;
+  it('WebSocket URL carries only the opaque token, never the API key', async () => {
+    const { ws } = await init();
+    const url = new URL(ws.url);
+    expect(url.searchParams.get('token')).toBe('preissued-test-token');
+    expect(url.searchParams.has('apiKey')).toBe(false);
+    expect(url.searchParams.has('appId')).toBe(false);
+    expect(url.searchParams.has('accessToken')).toBe(false);
+  });
+
+  it('sends a full client request as the first frame after open', async () => {
+    const { ws } = await init();
     expect(ws.sent.length).toBeGreaterThanOrEqual(1);
-    // First sent payload should be the full client request — decode the header to verify
     const frame = ws.sent[0]!;
     expect((frame[1] >> 4) & 0x0f).toBe(0b0001); // MSG_FULL_CLIENT_REQUEST
   });
 
-  it('decodes and routes onPartial when only partials arrive', () => {
+  it('decodes and routes onPartial when only partials arrive', async () => {
     const onPartial = vi.fn();
     const onDefinite = vi.fn();
-    init({ onPartial, onDefinite });
-    FakeWebSocket.instances[0]!.fakeMessage(
+    await init({ onPartial, onDefinite });
+    FakeWebSocket.instances[FakeWebSocket.instances.length - 1]!.fakeMessage(
       buildJsonServerFrame({
         result: {
           text: '',
@@ -131,11 +141,11 @@ describe('openVolcAsrSession', () => {
     expect(onDefinite).not.toHaveBeenCalled();
   });
 
-  it('routes single definite utterance via onDefinite', () => {
+  it('routes single definite utterance via onDefinite', async () => {
     const onPartial = vi.fn();
     const onDefinite = vi.fn();
-    init({ onPartial, onDefinite });
-    FakeWebSocket.instances[0]!.fakeMessage(
+    await init({ onPartial, onDefinite });
+    FakeWebSocket.instances[FakeWebSocket.instances.length - 1]!.fakeMessage(
       buildJsonServerFrame({
         result: { utterances: [{ text: '完成', definite: true }] },
       }),
@@ -144,10 +154,10 @@ describe('openVolcAsrSession', () => {
     expect(onPartial).not.toHaveBeenCalled();
   });
 
-  it('joins MULTIPLE definite utterances into one onDefinite call (regression on #5)', () => {
+  it('joins MULTIPLE definite utterances into one onDefinite call (regression on #5)', async () => {
     const onDefinite = vi.fn();
-    init({ onDefinite });
-    FakeWebSocket.instances[0]!.fakeMessage(
+    await init({ onDefinite });
+    FakeWebSocket.instances[FakeWebSocket.instances.length - 1]!.fakeMessage(
       buildJsonServerFrame({
         result: {
           utterances: [
@@ -162,11 +172,11 @@ describe('openVolcAsrSession', () => {
     expect(onDefinite.mock.calls[0]?.[0]).toContain('第二句。');
   });
 
-  it('skips definite-only frames whose text is just whitespace', () => {
+  it('skips definite-only frames whose text is just whitespace', async () => {
     const onDefinite = vi.fn();
     const onPartial = vi.fn();
-    init({ onDefinite, onPartial });
-    FakeWebSocket.instances[0]!.fakeMessage(
+    await init({ onDefinite, onPartial });
+    FakeWebSocket.instances[FakeWebSocket.instances.length - 1]!.fakeMessage(
       buildJsonServerFrame({
         result: { utterances: [{ text: '   ', definite: true }] },
       }),
@@ -175,18 +185,18 @@ describe('openVolcAsrSession', () => {
     expect(onPartial).not.toHaveBeenCalled();
   });
 
-  it('onError closes the underlying WebSocket (regression on #8)', () => {
+  it('onError closes the underlying WebSocket (regression on #8)', async () => {
     const onError = vi.fn();
-    const { ws } = init({ onError });
+    const { ws } = await init({ onError });
     ws.fakeError();
     expect(onError).toHaveBeenCalled();
     expect(ws.closed).toBe(true);
   });
 
-  it('late frames after close() are ignored', () => {
+  it('late frames after close() are ignored', async () => {
     const onPartial = vi.fn();
     const onDefinite = vi.fn();
-    const { session, ws } = init({ onPartial, onDefinite });
+    const { session, ws } = await init({ onPartial, onDefinite });
     session.close();
     ws.fakeMessage(
       buildJsonServerFrame({
@@ -196,42 +206,33 @@ describe('openVolcAsrSession', () => {
     expect(onDefinite).not.toHaveBeenCalled();
   });
 
-  it('after open, sendPcm routes audio frames directly to send', () => {
-    const { session, ws } = init();
-    // init() already opened the socket; first send should pass through immediately.
+  it('after open, sendPcm routes audio frames directly to send', async () => {
+    const { session, ws } = await init();
     session.sendPcm(new Uint8Array([1, 2, 3]));
     session.sendPcm(new Uint8Array([4, 5, 6]));
-    // 1 full-client-request + 2 audio frames
     expect(ws.sent.length).toBe(3);
   });
 
   it('pre-open PCM is queued and plays in order via flushPending on open', async () => {
-    // Defer fakeOpen until after we enqueue so we exercise the pending-buffer path.
-    const pendingPcms: Uint8Array[][] = [];
     const wsRef: { current: FakeWebSocket | null } = { current: null };
-    const session = openVolcAsrSession({ apiKey: 'k' }, {});
+    const session = await openVolcAsrSession({ apiKey: 'k' }, {}, { token: 'tok' });
     wsRef.current = FakeWebSocket.instances[FakeWebSocket.instances.length - 1]!;
     session.sendPcm(new Uint8Array([1, 2, 3]));
     session.sendPcm(new Uint8Array([4, 5, 6]));
     expect(wsRef.current.sent.length).toBe(0);
     wsRef.current.fakeOpen();
-    // After open, the queued chunks flush through send.
     expect(wsRef.current.sent.length).toBeGreaterThanOrEqual(2);
-    void pendingPcms; // silence unused
   });
 
-  it('caps the pre-open pending buffer to avoid unbounded growth (#8 secondary)', () => {
-    const { session } = init();
-    // Push more than the 256 KB cap; oldest should be dropped.
+  it('caps the pre-open pending buffer to avoid unbounded growth (#8 secondary)', async () => {
+    const { session } = await init();
     const chunk = new Uint8Array(64 * 1024); // 64 KB
     for (let i = 0; i < 8; i++) session.sendPcm(chunk);
-    // Pending cap drops oldest — only ~256 KB worth remains, but no socket to flush into.
-    // Just assert no throw and no UnhandledPromiseRejection.
     session.close();
   });
 
-  it('throws when called without credentials', () => {
-    expect(() => openVolcAsrSession({}, {})).toThrow(/Missing Volc ASR credentials/);
+  it('throws when called without credentials', async () => {
+    await expect(openVolcAsrSession({}, {})).rejects.toThrow(/Missing Volc ASR credentials/);
   });
 });
 

@@ -155,7 +155,7 @@ export function useVoiceWritingMode({
       });
     };
 
-    const session = openVolcAsrSession(creds, {
+    const session = await openVolcAsrSession(creds, {
       onPartial: (partial) => {
         if (!activeRef.current || pausedListeningRef.current) return;
         const id = currentUserNoteIdRef.current;
