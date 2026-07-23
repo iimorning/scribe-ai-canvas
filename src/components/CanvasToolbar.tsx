@@ -8,11 +8,14 @@ import {
   ZoomIn,
   FileText as FileTextIcon,
   Loader2,
+  Mic,
+  MicOff,
 } from 'lucide-react';
 import type { AgentConfig } from '../db';
 import { db } from '../db';
 import { getCanvasCenterPosition } from '../utils/canvas';
 import { resolveAgentLocalizedName } from '../utils/aiI18n';
+import type { VoicePhase } from '../hooks/useVoiceWritingMode';
 import { IntentClarificationModal } from './IntentClarificationModal';
 import { AgentIcon } from './AgentIcon';
 
@@ -38,6 +41,9 @@ export interface CanvasToolbarProps {
   isIntentSubmitting: boolean;
   onCancelIntentClarification: () => void;
   onConfirmIntentClarification: (finalRequest: string) => void;
+  voiceModeActive?: boolean;
+  voicePhase?: VoicePhase;
+  onToggleVoiceMode?: () => void;
 }
 
 export function CanvasToolbar({
@@ -58,8 +64,20 @@ export function CanvasToolbar({
   isIntentSubmitting,
   onCancelIntentClarification,
   onConfirmIntentClarification,
+  voiceModeActive = false,
+  voicePhase = 'idle',
+  onToggleVoiceMode,
 }: CanvasToolbarProps) {
   const { t } = useTranslation();
+
+  const phaseLabel =
+    voicePhase === 'listening'
+      ? t('voice.phase_listening')
+      : voicePhase === 'thinking'
+        ? t('voice.phase_thinking')
+        : voicePhase === 'speaking'
+          ? t('voice.phase_speaking')
+          : t('voice.phase_idle');
 
   return (
     <>
@@ -74,7 +92,12 @@ export function CanvasToolbar({
           onCancel={onCancelIntentClarification}
           onConfirm={onConfirmIntentClarification}
         />
-        <div className={`bg-white rounded-2xl shadow-2xl border border-[#E6E4DF] p-2 flex items-center space-x-2 ring-4 ring-[#F4F1ED]/50 transition-all ${isToolbarAiLoading ? 'opacity-80' : ''}`}>
+        {voiceModeActive && (
+          <div className="mb-2 self-center px-3 py-1.5 rounded-full bg-[#1a1a1a]/85 text-white text-[11px] font-mono tracking-wide shadow-lg">
+            {phaseLabel}
+          </div>
+        )}
+        <div className={`bg-white rounded-2xl shadow-2xl border border-[#E6E4DF] p-2 flex items-center space-x-2 ring-4 ring-[#F4F1ED]/50 transition-all ${isToolbarAiLoading ? 'opacity-80' : ''} ${voiceModeActive ? 'opacity-90' : ''}`}>
           <div className="flex items-center gap-1 pl-2 border-r border-[#E6E4DF] pr-3 mr-1 relative group">
             <div className="relative group/plus">
               <button
@@ -133,19 +156,31 @@ export function CanvasToolbar({
               <FileTextIcon className="w-4 h-4" />
               <input type="file" accept="image/*,video/*,.docx,.txt,.md" className="hidden" onChange={addFileNode} />
             </label>
+            <button
+              type="button"
+              title={voiceModeActive ? t('voice.toggle_off') : t('voice.toggle_on')}
+              onClick={onToggleVoiceMode}
+              className={`w-8 h-8 flex items-center justify-center rounded-lg cursor-pointer transition-colors ${
+                voiceModeActive
+                  ? 'text-white bg-[#C2410C] hover:bg-[#a0350a]'
+                  : 'text-[#5a5a54] hover:text-[#1a1a1a] hover:bg-[#F4F1ED]'
+              }`}
+            >
+              {voiceModeActive ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </button>
           </div>
           <input 
             className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 font-sans text-sm py-3 text-[#1a1a1a] placeholder-[#8c8a84] disabled:opacity-50" 
-            placeholder={t('ai.input_placeholder')} 
+            placeholder={voiceModeActive ? t('voice.input_placeholder') : t('ai.input_placeholder')} 
             type="text"
             value={aiPrompt}
             onChange={e => setAiPrompt(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleAiSubmit()}
-            disabled={isInputDisabled}
+            disabled={isInputDisabled || voiceModeActive}
           />
           <button 
             onClick={handleAiSubmit}
-            disabled={isInputDisabled}
+            disabled={isInputDisabled || voiceModeActive}
             className="bg-[#C2410C] text-white p-2.5 rounded-xl font-sans text-sm font-bold shadow-md flex items-center justify-center hover:bg-[#a0350a] transition-colors disabled:opacity-75 shrink-0"
           >
             {isToolbarAiLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Wand2 className="w-5 h-5" />}

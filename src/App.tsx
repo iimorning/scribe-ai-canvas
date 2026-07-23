@@ -33,6 +33,7 @@ import { useFullscreen } from './hooks/useFullscreen';
 import { useCanvasInteraction } from './hooks/useCanvasInteraction';
 import { useNodeActions } from './hooks/useNodeActions';
 import { useAiActions } from './hooks/useAiActions';
+import { useVoiceWritingMode } from './hooks/useVoiceWritingMode';
 import { useAppDialog } from './components/AppDialogProvider';
 import { processFileToNode } from './utils/file';
 import { dataTransferHasFiles, preventDefaultIfFileDrag } from './utils/dnd';
@@ -119,7 +120,7 @@ export default function App() {
   const { userName, setUserName, userRole, setUserRole, userAvatar, setUserAvatar } = useUserProfile();
 
   // Fullscreen
-  const { isFullscreen, toggleFullscreen } = useFullscreen(mainRef);
+  const { isFullscreen, toggleFullscreen, enterFullscreen, exitFullscreen } = useFullscreen(mainRef);
 
   // Canvas interaction (transform, pan, zoom, edge lines)
   const { canvasTransform, setCanvasTransform, transformRef, handlePanStart } = useCanvasInteraction(
@@ -282,6 +283,7 @@ export default function App() {
     analyzingAgentNodeId,
     followUpParentId,
     streamingAiNodeId,
+    setStreamingAiNodeId,
     isAnyAiBusy,
     aiPrompt,
     setAiPrompt,
@@ -295,6 +297,18 @@ export default function App() {
   } = useAiActions({
     aiConfig, agentConfigs, activeCanvasId, nodesRef, transformRef,
     dynamicNodes, edges, selectedNodes, setSelectedNodes, setActiveReferenceId, setActiveTab,
+  });
+
+  const { voiceModeActive, voicePhase, toggleVoiceMode } = useVoiceWritingMode({
+    aiConfig,
+    activeCanvasId,
+    transformRef,
+    setCanvasTransform,
+    setEditingNodeId,
+    setStreamingAiNodeId,
+    enterFullscreen,
+    exitFullscreen,
+    isAnyAiBusy,
   });
 
   const runAgentAnalysisFromCard = (agentNodeId: string) => {
@@ -546,7 +560,7 @@ export default function App() {
         {/* AI Prompt Bar & Toolbar */}
         <CanvasToolbar
           isToolbarAiLoading={isToolbarAiLoading || isToolbarIntentPreflight}
-          isInputDisabled={isAnyAiBusy}
+          isInputDisabled={isAnyAiBusy || voiceModeActive}
           aiPrompt={aiPrompt} setAiPrompt={setAiPrompt}
           handleAiSubmit={handleAiSubmit} addTextNode={addTextNode} addThemeNode={addThemeNode} addFileNode={addFileNode}
           agentConfigs={agentConfigs} canvasTransform={canvasTransform}
@@ -556,6 +570,9 @@ export default function App() {
           isIntentSubmitting={isToolbarAiLoading}
           onCancelIntentClarification={cancelIntentClarification}
           onConfirmIntentClarification={(finalRequest) => void confirmIntentClarification(finalRequest)}
+          voiceModeActive={voiceModeActive}
+          voicePhase={voicePhase}
+          onToggleVoiceMode={toggleVoiceMode}
         />
         </main>
         )}

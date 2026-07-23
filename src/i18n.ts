@@ -44,6 +44,21 @@ const resources = {
         "change_color": "Change Color",
         "change_font": "Change Font"
       },
+      "voice": {
+        "toggle_on": "Start voice writing",
+        "toggle_off": "Stop voice writing",
+        "input_placeholder": "Voice mode — speak to the canvas…",
+        "phase_idle": "Voice mode",
+        "phase_listening": "Listening…",
+        "phase_thinking": "Thinking…",
+        "phase_speaking": "Speaking…",
+        "need_asr_keys": "Add Volcengine ASR credentials in Settings (API Key, or App ID + Access Token).",
+        "need_minimax_key": "Add a MiniMax TTS API key in Settings to hear replies.",
+        "mic_denied": "Microphone permission denied. Allow mic access and try again.",
+        "asr_error": "Speech recognition failed: {{message}}",
+        "tts_error": "Speech synthesis failed: {{message}}",
+        "ai_error": "Voice writing AI failed: {{message}}"
+      },
       "nodes": {
         "theme": "Core Theme",
         "new_theme_title": "Untitled theme",
@@ -103,6 +118,16 @@ const resources = {
         "model": "Model",
         "metaso_key": "Metaso Search API Key",
         "metaso_key_hint": "Optional: enables real-time web search in Research Lab for richer, sourced reports.",
+        "voice_section": "Voice writing",
+        "voice_section_hint": "Required for the mic toggle on the canvas. Uses Volcengine streaming ASR and MiniMax TTS. Works in local npm run dev / desktop; static Netlify hosting cannot proxy the ASR WebSocket.",
+        "volc_asr_api_key": "Volc ASR API Key (new console)",
+        "volc_asr_api_key_placeholder": "Prefer new-console X-Api-Key; or use App ID + Access Token below",
+        "volc_asr_app_id": "Volc ASR App ID (legacy)",
+        "volc_asr_access_token": "Volc ASR Access Token (legacy)",
+        "volc_asr_resource_id": "Volc ASR Resource ID",
+        "minimax_api_key": "MiniMax TTS API Key",
+        "minimax_voice_id": "MiniMax voice ID",
+        "minimax_tts_model": "MiniMax TTS model",
         "save_success": "Settings saved.",
         "close": "Close",
         "save": "Save Configuration",
@@ -191,7 +216,8 @@ const resources = {
           "context_fragment_label": "\n[Context Fragment]: ",
           "threadFollowUp": "You are continuing a dialogue on the canvas. The assistant’s previous reply was:\n\n---\n{{previous}}\n---\n\nThe user’s new message:\n{{request}}\n\nRespond as a thoughtful continuation. Address the follow-up directly; keep the same voice and depth as before unless the user asks otherwise.",
           "agentThreadContextMissing": "(Original source note is unavailable or was removed — continue using the dialogue below.)",
-          "agentThreadFollowUp": "You are continuing an agent-persona thread on the canvas.\n\n## Original material (same as the first analysis)\n\n---\n{{initialContext}}\n---\n\n## Dialogue so far (oldest to newest)\n\n{{dialogueHistory}}\n\n## User’s new message\n\n{{request}}\n\nReply as a direct continuation: stay aligned with the agent’s role, keep depth consistent, and tie back to the original material when relevant."
+          "agentThreadFollowUp": "You are continuing an agent-persona thread on the canvas.\n\n## Original material (same as the first analysis)\n\n---\n{{initialContext}}\n---\n\n## Dialogue so far (oldest to newest)\n\n{{dialogueHistory}}\n\n## User’s new message\n\n{{request}}\n\nReply as a direct continuation: stay aligned with the agent’s role, keep depth consistent, and tie back to the original material when relevant.",
+          "voiceWritingPersona": "You are a calm voice writing partner. The user is speaking thoughts aloud. Reply in concise spoken-friendly prose (short paragraphs, no markdown tables or heavy lists). Help them clarify, deepen, and continue thinking. Match their language. Do not mention canvases, notes, cards, or product UI unless they ask."
         }
       },
       "lab": {
@@ -367,6 +393,21 @@ const resources = {
         "change_color": "更改颜色",
         "change_font": "更改字体"
       },
+      "voice": {
+        "toggle_on": "开启语音写作",
+        "toggle_off": "关闭语音写作",
+        "input_placeholder": "语音模式 — 对着画布说话…",
+        "phase_idle": "语音模式",
+        "phase_listening": "正在听写…",
+        "phase_thinking": "正在思考…",
+        "phase_speaking": "正在朗读…",
+        "need_asr_keys": "请先在设置中填写火山 ASR 凭证（API Key，或 App ID + Access Token）。",
+        "need_minimax_key": "请先在设置中填写 MiniMax TTS API Key，才能朗读回复。",
+        "mic_denied": "未获得麦克风权限，请允许后重试。",
+        "asr_error": "语音识别失败：{{message}}",
+        "tts_error": "语音合成失败：{{message}}",
+        "ai_error": "语音写作 AI 失败：{{message}}"
+      },
       "nodes": {
         "theme": "核心主题",
         "new_theme_title": "未命名主题",
@@ -426,6 +467,16 @@ const resources = {
         "model": "模型",
         "metaso_key": "秘塔搜索 API Key",
         "metaso_key_hint": "可选：配置后研究实验室将启用联网搜索，生成更丰富的引用报告。",
+        "voice_section": "语音写作",
+        "voice_section_hint": "画布麦克风开关需要这些配置：火山流式语音识别 + MiniMax 语音合成。完整能力需本地 npm run dev 或桌面端；纯静态 Netlify 托管无法代理 ASR WebSocket。",
+        "volc_asr_api_key": "火山 ASR API Key（新版控制台）",
+        "volc_asr_api_key_placeholder": "优先填新版 X-Api-Key；或使用下方旧版 App ID + Access Token",
+        "volc_asr_app_id": "火山 ASR App ID（旧版）",
+        "volc_asr_access_token": "火山 ASR Access Token（旧版）",
+        "volc_asr_resource_id": "火山 ASR Resource ID",
+        "minimax_api_key": "MiniMax TTS API Key",
+        "minimax_voice_id": "MiniMax 音色 ID",
+        "minimax_tts_model": "MiniMax TTS 模型",
         "save_success": "设置已保存。",
         "close": "关闭",
         "save": "保存配置",
@@ -514,7 +565,8 @@ const resources = {
           "context_fragment_label": "\n【上下文片段】：",
           "threadFollowUp": "你正在画布上延续一段对话。助手上一轮回复如下：\n\n---\n{{previous}}\n---\n\n用户的新消息：\n{{request}}\n\n请承接上文，直接回应这条追问；语气与深度与之前保持一致，除非用户另有要求。",
           "agentThreadContextMissing": "（首轮分析的原始便签不可用或已删除，请仅依据下列对话与当前追问作答。）",
-          "agentThreadFollowUp": "你正在延续画布上某一 Agent 人格的对话线程。\n\n## 原始材料（与首次分析时相同的那份正文）\n\n---\n{{initialContext}}\n---\n\n## 已发生的对话（从旧到新）\n\n{{dialogueHistory}}\n\n## 用户本条消息\n\n{{request}}\n\n请直接接着谈：保持该 Agent 人设与深度；需要时请回扣原始材料。"
+          "agentThreadFollowUp": "你正在延续画布上某一 Agent 人格的对话线程。\n\n## 原始材料（与首次分析时相同的那份正文）\n\n---\n{{initialContext}}\n---\n\n## 已发生的对话（从旧到新）\n\n{{dialogueHistory}}\n\n## 用户本条消息\n\n{{request}}\n\n请直接接着谈：保持该 Agent 人设与深度；需要时请回扣原始材料。",
+          "voiceWritingPersona": "你是冷静的语音写作搭档。用户正在口述想法。请用适合朗读的简洁散文回复（短段落，避免表格与过重列表）。帮助对方澄清、深入并继续思考。与用户使用同一语言。除非用户问起，否则不要提及画布、便签、卡片或产品界面。"
         }
       },
       "lab": {

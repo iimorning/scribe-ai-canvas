@@ -11,13 +11,25 @@ export function useFullscreen(containerRef: RefObject<HTMLElement | null>) {
     return () => document.removeEventListener('fullscreenchange', handleFsChange);
   }, []);
 
-  const toggleFullscreen = useCallback(() => {
+  const enterFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen();
-    } else {
-      document.exitFullscreen();
+      void containerRef.current?.requestFullscreen?.();
     }
   }, [containerRef]);
 
-  return { isFullscreen, toggleFullscreen };
+  const exitFullscreen = useCallback(() => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    }
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      enterFullscreen();
+    } else {
+      exitFullscreen();
+    }
+  }, [enterFullscreen, exitFullscreen]);
+
+  return { isFullscreen, toggleFullscreen, enterFullscreen, exitFullscreen };
 }

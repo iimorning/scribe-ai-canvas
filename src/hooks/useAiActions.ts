@@ -551,6 +551,7 @@ export function useAiActions({
     analyzingAgentNodeId,
     followUpParentId,
     streamingAiNodeId,
+    setStreamingAiNodeId,
     isAnyAiBusy,
     aiPrompt,
     setAiPrompt,
