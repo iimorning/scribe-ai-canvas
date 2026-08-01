@@ -96,4 +96,60 @@ describe('useNodeActions', () => {
     const edges = await db.edges.toArray();
     expect(edges.length).toBe(0);
   });
+
+  it('removeNodeIds 批量删除多个节点并清理所有关联边', async () => {
+    await db.nodes.add({ id: 'n1', canvasId: 'default', type: 'text', content: '', x: 0, y: 0 });
+    await db.nodes.add({ id: 'n2', canvasId: 'default', type: 'text', content: '', x: 0, y: 0 });
+    await db.nodes.add({ id: 'n3', canvasId: 'default', type: 'text', content: '留守', x: 0, y: 0 });
+    await db.edges.add({ id: 'e1', canvasId: 'default', from: 'n1', to: 'n2' });
+    await db.edges.add({ id: 'e2', canvasId: 'default', from: 'n2', to: 'n1' });
+    await db.edges.add({ id: 'e3', canvasId: 'default', from: 'n1', to: 'n3' });
+    await db.edges.add({ id: 'e_keep', canvasId: 'default', from: 'n3', to: 'n3' });
+
+    const { result } = renderHook(() => useTestNodeActions());
+
+    await act(async () => {
+      await result.current.removeNodeIds(['n1', 'n2']);
+    });
+
+    const nodes = await db.nodes.toArray();
+    expect(nodes.length).toBe(1);
+    expect(nodes[0].id).toBe('n3');
+
+    const edges = await db.edges.toArray();
+    expect(edges.length).toBe(1);
+    expect(edges[0].id).toBe('e_keep');
+  });
+
+  it('removeNodeIds 对重复输入会自动去重', async () => {
+    await db.nodes.add({ id: 'n1', canvasId: 'default', type: 'text', content: '', x: 0, y: 0 });
+    await db.nodes.add({ id: 'n2', canvasId: 'default', type: 'text', content: '', x: 0, y: 0 });
+    await db.edges.add({ id: 'e1', canvasId: 'default', from: 'n1', to: 'n2' });
+
+    const { result } = renderHook(() => useTestNodeActions());
+
+    await act(async () => {
+      await result.current.removeNodeIds(['n1', 'n1', 'n2']);
+    });
+
+    const nodes = await db.nodes.toArray();
+    expect(nodes.length).toBe(0);
+
+    const edges = await db.edges.toArray();
+    expect(edges.length).toBe(0);
+  });
+
+  it('removeNodeIds 对空输入是 no-op（不报错也不动数据库）', async () => {
+    await db.nodes.add({ id: 'n1', canvasId: 'default', type: 'text', content: '', x: 0, y: 0 });
+    await db.edges.add({ id: 'e1', canvasId: 'default', from: 'n1', to: 'n1' });
+
+    const { result } = renderHook(() => useTestNodeActions());
+
+    await act(async () => {
+      await result.current.removeNodeIds([]);
+    });
+
+    expect(await db.nodes.count()).toBe(1);
+    expect(await db.edges.count()).toBe(1);
+  });
 });

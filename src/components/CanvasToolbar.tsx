@@ -125,15 +125,11 @@ export function CanvasToolbar({
                   <Sparkles className="w-3.5 h-3.5 shrink-0 text-[#C2410C]" />
                   <span className="font-bold truncate">{t('sidebar.new_theme_card')}</span>
                 </button>
-              </div>
-            </div>
-            <div className="relative group/agent">
-              <button title={t('sidebar.agents')} className="w-8 h-8 flex items-center justify-center text-[#5a5a54] hover:text-[#1a1a1a] hover:bg-[#F4F1ED] rounded-lg cursor-pointer transition-colors">
-                <Bot className="w-4 h-4" />
-              </button>
-              {/* Dropdown for agents */}
-              <div className="absolute bottom-full left-0 mb-2 w-48 bg-white border border-[#E6E4DF] rounded-xl shadow-xl opacity-0 invisible group-hover/agent:opacity-100 group-hover/agent:visible transition-all flex flex-col p-1">
-                <div className="px-3 py-2 text-[10px] font-bold text-[#8c8a84] uppercase tracking-wider font-mono">{t('sidebar.agents')}</div>
+                <div className="my-1 border-t border-[#E6E4DF]" />
+                <div className="px-3 py-2 text-[10px] font-bold text-[#8c8a84] uppercase tracking-wider font-mono flex items-center gap-1.5">
+                  <Bot className="w-3.5 h-3.5" />
+                  {t('sidebar.agents')}
+                </div>
                 {agentConfigs.map(agent => (
                   <button key={agent.id} onClick={async () => {
                     const { x, y } = getCanvasCenterPosition(transformRef.current);

@@ -166,7 +166,7 @@ vi.mock('lucide-react', () => {
     'Focus', 'Image', 'FilePlus', 'Trash2', 'Link2', 'X', 'Camera', 'ChevronLeft',
     'ChevronRight', 'Check', 'Cpu', 'ArrowRight', 'ListChecks', 'CheckCircle2',
     'Loader2', 'PenLine', 'Edit3', 'FileText', 'Globe', 'ExternalLink', 'RotateCcw',
-    'Monitor', 'Download',
+    'Monitor', 'Download', 'Mic', 'MicOff',
   ];
   const icons: Record<string, React.FC> = {};
   for (const name of iconNames) {
@@ -1022,6 +1022,50 @@ describe('App 组件', () => {
         expect(typeof node.x).toBe('number');
         expect(typeof node.y).toBe('number');
       });
+    });
+
+    it('选中节点后按下 Delete 键批量删除（含关联边）', async () => {
+      const user = userEvent.setup();
+      // Pre-populate two text nodes plus an edge between them. Use unique content so we can
+      // locate their DOM wrappers without colliding with the seed dataset.
+      await db.nodes.add({ id: 'kbd-a', canvasId: 'default', type: 'text', content: 'kbd-delete-a', x: 0, y: 0 });
+      await db.nodes.add({ id: 'kbd-b', canvasId: 'default', type: 'text', content: 'kbd-delete-b', x: 0, y: 0 });
+      await db.edges.add({ id: 'kbd-edge', canvasId: 'default', from: 'kbd-a', to: 'kbd-b' });
+      // A third unrelated node that should survive the deletion.
+      await db.nodes.add({ id: 'kbd-keep', canvasId: 'default', type: 'text', content: 'kbd-keep', x: 0, y: 0 });
+
+      await act(async () => { render(<App />); });
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      });
+
+      // First click selects node A (no shift → exclusive selection replaces any prior pick).
+      const aText = await screen.findByText('kbd-delete-a');
+      await act(async () => { await user.click(aText); });
+
+      // Second click adds node B: simulate a Shift+click so selectNode(id, additive=true) adds it.
+      const bText = await screen.findByText('kbd-delete-b');
+      await act(async () => {
+        await user.keyboard('{Shift>}');
+        await user.click(bText);
+        await user.keyboard('{/Shift}');
+      });
+
+      // Drive the canvas-level keyboard-delete handler. event.target defaults to body, which
+      // is not an editing target, so the listener passes its gate and calls removeNodeIds.
+      await act(async () => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+        await new Promise(resolve => setTimeout(resolve, 100));
+      });
+
+      const nodes = await db.nodes.toArray();
+      const ids = nodes.map(n => n.id);
+      expect(ids).not.toContain('kbd-a');
+      expect(ids).not.toContain('kbd-b');
+      expect(ids).toContain('kbd-keep');
+
+      const edges = await db.edges.toArray();
+      expect(edges.find(e => e.id === 'kbd-edge')).toBeUndefined();
     });
   });
 
