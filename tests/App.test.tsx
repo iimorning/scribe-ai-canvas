@@ -1039,17 +1039,15 @@ describe('App 组件', () => {
         await new Promise(resolve => setTimeout(resolve, 200));
       });
 
-      // First click selects node A (no shift → exclusive selection replaces any prior pick).
+      // Selection chrome is only via the top-left check circle (not body click).
       const aText = await screen.findByText('kbd-delete-a');
-      await act(async () => { await user.click(aText); });
-
-      // Second click adds node B: simulate a Shift+click so selectNode(id, additive=true) adds it.
       const bText = await screen.findByText('kbd-delete-b');
-      await act(async () => {
-        await user.keyboard('{Shift>}');
-        await user.click(bText);
-        await user.keyboard('{/Shift}');
-      });
+      const aSelect = aText.closest('.group')?.querySelector<HTMLElement>('[title="选择便签"]');
+      const bSelect = bText.closest('.group')?.querySelector<HTMLElement>('[title="选择便签"]');
+      expect(aSelect).toBeTruthy();
+      expect(bSelect).toBeTruthy();
+      await act(async () => { await user.click(aSelect!); });
+      await act(async () => { await user.click(bSelect!); });
 
       // Drive the canvas-level keyboard-delete handler. event.target defaults to body, which
       // is not an editing target, so the listener passes its gate and calls removeNodeIds.

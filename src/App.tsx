@@ -333,16 +333,6 @@ export default function App() {
     activeCanvasId, nodesRef, connectingFrom, setConnectingFrom, edges, selectedNodes, setSelectedNodes, transformRef,
   });
 
-  const selectNode = useCallback((id: string, additive: boolean) => {
-    setSelectedNodes((previous) => {
-      if (!additive) return new Set([id]);
-      const next = new Set(previous);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (activeTab !== 'personal' || isTextEditingTarget(event.target) || selectedNodes.size === 0) return;
@@ -614,7 +604,6 @@ export default function App() {
                     isSelected={selectedNodes.has(node.id)}
                     isEditing={editingNodeId === node.id}
                     onToggleSelect={() => toggleNodeSelection(node.id)}
-                    onSelect={selectNode}
                     allowPalette={true}
                     onDragEnd={handleNodeDragEnd}
                     onResizeEnd={(size) => {
