@@ -157,8 +157,13 @@ export function useVoiceWritingMode({
 
     const session = await openVolcAsrSession(creds, {
       onPartial: (partial) => {
-        if (!activeRef.current || pausedListeningRef.current) return;
+        console.log('[Spoor Voice] onPartial', JSON.stringify(partial));
+        if (!activeRef.current || pausedListeningRef.current) {
+          console.log('[Spoor Voice] onPartial dropped', { active: activeRef.current, paused: pausedListeningRef.current });
+          return;
+        }
         const id = currentUserNoteIdRef.current;
+        console.log('[Spoor Voice] onPartial → db.update', { id, hasId: !!id });
         if (id) void db.nodes.update(id, { content: partial });
       },
       onDefinite: handleDefinite,
@@ -171,6 +176,7 @@ export function useVoiceWritingMode({
       },
     });
     asrRef.current = session;
+    console.log('[Spoor Voice] ASR session opened');
 
     let mic: MicCapture;
     try {

@@ -129,60 +129,105 @@ export async function openVolcAsrSession(
   const token =
     opts.token ?? (await issueVolcAsrToken(creds, { signal: opts.signal, fetchImpl: opts.fetchImpl })).token;
 
-  let sequence = 1;
+  console.log('[Spoor ASR] token issued, opening WS', { hasApiKey: !!(creds.apiKey ?? '').trim(), hasAppId: !!(creds.appId ?? '').trim(), resourceId: (creds.resourceId ?? '').trim() || VOLC_ASR_DEFAULT_RESOURCE_ID });
+
   let closed = false;
+  /** Only true after the server acknowledges the full client request (or ready timeout). */
   let ready = false;
   const MAX_PENDING_BYTES = 256 * 1024;
   let pendingBytes = 0;
   const pending: Uint8Array[] = [];
+  /** Serialize gzip + send so packet order matches wire order. */
+  let writeChain: Promise<void> = Promise.resolve();
+  let readyTimer: ReturnType<typeof setTimeout> | null = null;
 
   const ws = new WebSocket(buildProxyWsUrl(token, creds));
   ws.binaryType = 'arraybuffer';
 
+  const enqueueWrite = (task: () => Promise<void>) => {
+    writeChain = writeChain
+      .then(task)
+      .catch((e) => {
+        if (closed) return;
+        handlers.onError?.(e instanceof Error ? e.message : String(e));
+      });
+  };
+
   const flushPending = () => {
-    while (pending.length > 0 && ready && ws.readyState === WebSocket.OPEN) {
+    while (pending.length > 0 && ready && !closed) {
       const chunk = pending.shift()!;
       pendingBytes -= chunk.length;
-      ws.send(encodeAudioOnlyRequest(chunk, sequence++));
+      enqueueWrite(async () => {
+        if (closed || ws.readyState !== WebSocket.OPEN) return;
+        const frame = await encodeAudioOnlyRequest(chunk);
+        if (closed || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(frame);
+      });
     }
   };
 
-  ws.onopen = () => {
-    const fullReq = encodeFullClientRequest({
-      user: { uid: 'spoor-voice' },
-      audio: {
-        format: 'pcm',
-        codec: 'raw',
-        rate: 16000,
-        bits: 16,
-        channel: 1,
-      },
-      request: {
-        model_name: 'bigmodel',
-        enable_itn: true,
-        enable_punc: true,
-        enable_ddc: false,
-        show_utterances: true,
-        result_type: 'full',
-        enable_nonstream: true,
-        end_window_size: 800,
-        force_to_speech_time: 1000,
-      },
-    });
-    ws.send(fullReq);
+  const markReadyAndFlush = () => {
+    if (ready || closed) return;
     ready = true;
+    if (readyTimer) {
+      clearTimeout(readyTimer);
+      readyTimer = null;
+    }
     flushPending();
+  };
+
+  ws.onopen = () => {
+    console.log('[Spoor ASR] ws.onopen');
+    enqueueWrite(async () => {
+      if (closed || ws.readyState !== WebSocket.OPEN) return;
+      const fullReq = await encodeFullClientRequest({
+        user: { uid: 'spoor-voice' },
+        audio: {
+          format: 'pcm',
+          codec: 'raw',
+          rate: 16000,
+          bits: 16,
+          channel: 1,
+        },
+        request: {
+          model_name: 'bigmodel',
+          enable_itn: true,
+          enable_punc: true,
+          enable_ddc: false,
+          show_utterances: true,
+          result_type: 'full',
+          enable_nonstream: true,
+          end_window_size: 800,
+          force_to_speech_time: 1000,
+        },
+      });
+      if (closed || ws.readyState !== WebSocket.OPEN) return;
+      ws.send(fullReq);
+      console.log('[Spoor ASR] full client request sent', { bytes: fullReq.byteLength });
+      // Prefer waiting for the init full-server-response; fall back so a missed ACK
+      // cannot leave the mic buffering forever with no UI error.
+      readyTimer = setTimeout(() => {
+        console.warn('[Spoor ASR] ready timer fired without ACK — flushing anyway');
+        markReadyAndFlush();
+      }, 800);
+    });
   };
 
   const handleParsed = (parsed: ReturnType<typeof parseServerFrame>) => {
     if (closed) return;
+    console.log('[Spoor ASR] parsed frame', { type: parsed.messageType, text: parsed.text, utterances: parsed.utterances, error: parsed.errorMessage });
     if (parsed.errorMessage) {
       handlers.onError?.(parsed.errorMessage);
       return;
     }
 
+    // Any non-error binary frame means the full client request was accepted.
+    if (!ready) console.log('[Spoor ASR] first non-error frame → ready');
+    markReadyAndFlush();
+
     const definiteText = joinDefinite(parsed.utterances);
     if (definiteText) {
+      console.log('[Spoor ASR] onDefinite', JSON.stringify(definiteText));
       handlers.onDefinite?.(definiteText);
       return;
     }
@@ -192,10 +237,14 @@ export async function openVolcAsrSession(
       .map((u) => u.text)
       .join('');
     const partial = (partialFromUtterances || parsed.text || '').trim();
-    if (partial) handlers.onPartial?.(partial);
+    if (partial) {
+      console.log('[Spoor ASR] onPartial', JSON.stringify(partial));
+      handlers.onPartial?.(partial);
+    }
   };
 
   ws.onmessage = (ev) => {
+    console.log('[Spoor ASR] ws.onmessage', { kind: typeof ev.data, bytes: typeof ev.data === 'string' ? ev.data.length : ev.data.byteLength });
     if (typeof ev.data === 'string') {
       try {
         const j = JSON.parse(ev.data) as { error?: string };
@@ -218,6 +267,7 @@ export async function openVolcAsrSession(
   };
 
   ws.onerror = () => {
+    console.error('[Spoor ASR] ws.onerror');
     if (closed) return;
     handlers.onError?.('Volc ASR WebSocket error');
     try {
@@ -228,13 +278,19 @@ export async function openVolcAsrSession(
   };
 
   ws.onclose = () => {
+    console.log('[Spoor ASR] ws.onclose');
     closed = true;
     handlers.onClose?.();
   };
 
+  let sendPcmCount = 0;
   return {
     sendPcm(pcm: Uint8Array) {
       if (closed || pcm.length === 0) return;
+      sendPcmCount += 1;
+      if (sendPcmCount <= 3 || sendPcmCount % 50 === 0) {
+        console.log('[Spoor ASR] sendPcm', { n: sendPcmCount, bytes: pcm.length, ready, wsState: ws.readyState, pending: pending.length });
+      }
       if (!ready || ws.readyState !== WebSocket.OPEN) {
         pendingBytes += pcm.length;
         pending.push(pcm);
@@ -244,14 +300,28 @@ export async function openVolcAsrSession(
         }
         return;
       }
-      ws.send(encodeAudioOnlyRequest(pcm, sequence++));
+      enqueueWrite(async () => {
+        if (closed || ws.readyState !== WebSocket.OPEN) return;
+        const frame = await encodeAudioOnlyRequest(pcm);
+        if (closed || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(frame);
+      });
     },
     finish() {
       if (closed || ws.readyState !== WebSocket.OPEN) return;
-      ws.send(encodeAudioOnlyRequest(new Uint8Array(0), sequence++, true));
+      enqueueWrite(async () => {
+        if (closed || ws.readyState !== WebSocket.OPEN) return;
+        const frame = await encodeAudioOnlyRequest(new Uint8Array(0), 0, true);
+        if (closed || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(frame);
+      });
     },
     close() {
       closed = true;
+      if (readyTimer) {
+        clearTimeout(readyTimer);
+        readyTimer = null;
+      }
       try {
         ws.close();
       } catch {

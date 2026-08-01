@@ -52,7 +52,13 @@ class FakeWebSocket {
 vi.stubGlobal('WebSocket', FakeWebSocket as unknown as typeof WebSocket);
 
 import { hasVolcAsrCredentials, openVolcAsrSession } from '../../src/services/volcAsr';
-import { encodeFullClientRequest, MSG_FULL_SERVER_RESPONSE, FLAG_POSITIVE_SEQUENCE, SERIAL_JSON, COMPRESS_NONE } from '../../src/services/volcAsrProtocol';
+import {
+  MSG_FULL_SERVER_RESPONSE,
+  FLAG_POSITIVE_SEQUENCE,
+  SERIAL_JSON,
+  COMPRESS_NONE,
+  COMPRESS_GZIP,
+} from '../../src/services/volcAsrProtocol';
 
 function buildJsonServerFrame(json: object): ArrayBuffer {
   const payload = new TextEncoder().encode(JSON.stringify(json));
@@ -71,6 +77,22 @@ function buildJsonServerFrame(json: object): ArrayBuffer {
   out.set(lenBytes, header.length + seq.length);
   out.set(payload, header.length + seq.length + lenBytes.length);
   return out.buffer;
+}
+
+async function flushAsyncWork(): Promise<void> {
+  // CompressionStream / write queue settle across micro + macro tasks.
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
+async function waitForSent(ws: FakeWebSocket, count: number, timeoutMs = 2000): Promise<void> {
+  const start = Date.now();
+  while (ws.sent.length < count) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(`timed out waiting for ${count} sent frames (have ${ws.sent.length})`);
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
 }
 
 beforeEach(() => {
@@ -106,7 +128,18 @@ describe('openVolcAsrSession', () => {
     const session = await openVolcAsrSession({ apiKey: 'k' }, handlers, opts);
     const ws = FakeWebSocket.instances[FakeWebSocket.instances.length - 1]!;
     ws.fakeOpen();
+    await waitForSent(ws, 1);
     return { session, ws };
+  }
+
+  /** Server ACK after full client request — required before audio may be sent. */
+  async function ackSession(ws: FakeWebSocket): Promise<void> {
+    ws.fakeMessage(
+      buildJsonServerFrame({
+        result: { text: '', utterances: [] },
+      }),
+    );
+    await flushAsyncWork();
   }
 
   it('WebSocket URL carries only the opaque token, never the API key', async () => {
@@ -118,11 +151,22 @@ describe('openVolcAsrSession', () => {
     expect(url.searchParams.has('accessToken')).toBe(false);
   });
 
-  it('sends a full client request as the first frame after open', async () => {
+  it('sends a gzip full client request as the first frame after open', async () => {
     const { ws } = await init();
-    expect(ws.sent.length).toBeGreaterThanOrEqual(1);
+    expect(ws.sent.length).toBe(1);
     const frame = ws.sent[0]!;
     expect((frame[1] >> 4) & 0x0f).toBe(0b0001); // MSG_FULL_CLIENT_REQUEST
+    expect(frame[2] & 0x0f).toBe(COMPRESS_GZIP);
+  });
+
+  it('does not send audio until the server ACK arrives', async () => {
+    const { session, ws } = await init();
+    session.sendPcm(new Uint8Array([1, 2, 3]));
+    await flushAsyncWork();
+    expect(ws.sent.length).toBe(1); // only full client request
+    await ackSession(ws);
+    await waitForSent(ws, 2);
+    expect((ws.sent[1]![1] >> 4) & 0x0f).toBe(0b0010); // MSG_AUDIO_ONLY_REQUEST
   });
 
   it('decodes and routes onPartial when only partials arrive', async () => {
@@ -206,22 +250,26 @@ describe('openVolcAsrSession', () => {
     expect(onDefinite).not.toHaveBeenCalled();
   });
 
-  it('after open, sendPcm routes audio frames directly to send', async () => {
+  it('after ACK, sendPcm routes audio frames to send', async () => {
     const { session, ws } = await init();
+    await ackSession(ws);
+    const before = ws.sent.length;
     session.sendPcm(new Uint8Array([1, 2, 3]));
     session.sendPcm(new Uint8Array([4, 5, 6]));
-    expect(ws.sent.length).toBe(3);
+    await waitForSent(ws, before + 2);
   });
 
-  it('pre-open PCM is queued and plays in order via flushPending on open', async () => {
-    const wsRef: { current: FakeWebSocket | null } = { current: null };
+  it('pre-open PCM is queued and flushes only after open + ACK', async () => {
     const session = await openVolcAsrSession({ apiKey: 'k' }, {}, { token: 'tok' });
-    wsRef.current = FakeWebSocket.instances[FakeWebSocket.instances.length - 1]!;
+    const ws = FakeWebSocket.instances[FakeWebSocket.instances.length - 1]!;
     session.sendPcm(new Uint8Array([1, 2, 3]));
     session.sendPcm(new Uint8Array([4, 5, 6]));
-    expect(wsRef.current.sent.length).toBe(0);
-    wsRef.current.fakeOpen();
-    expect(wsRef.current.sent.length).toBeGreaterThanOrEqual(2);
+    expect(ws.sent.length).toBe(0);
+    ws.fakeOpen();
+    await waitForSent(ws, 1);
+    expect(ws.sent.length).toBe(1); // full request only
+    await ackSession(ws);
+    await waitForSent(ws, 3); // full + 2 audio
   });
 
   it('caps the pre-open pending buffer to avoid unbounded growth (#8 secondary)', async () => {
@@ -235,6 +283,3 @@ describe('openVolcAsrSession', () => {
     await expect(openVolcAsrSession({}, {})).rejects.toThrow(/Missing Volc ASR credentials/);
   });
 });
-
-// ensure encodeFullClientRequest is reachable through the same import surface.
-void encodeFullClientRequest;

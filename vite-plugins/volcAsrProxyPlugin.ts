@@ -122,7 +122,7 @@ function attachVolcAsrUpgrade(server: {
 
     const qs = readQuery(url);
     const token = (qs.get('token') || '').trim();
-    const resourceId = (qs.get('resourceId') || 'volc.bigasr.sauc.duration').trim();
+    const resourceId = (qs.get('resourceId') || 'volc.seedasr.sauc.duration').trim();
     const requestId = (qs.get('requestId') || randomUUID()).trim();
 
     if (!token) {
@@ -155,38 +155,85 @@ function attachVolcAsrUpgrade(server: {
 
     wss.handleUpgrade(req, socket, head, (client) => {
       let upstream: WebSocket;
+      console.log('[Spoor ASR Proxy] client upgraded', { requestId, resourceId, hasApiKey: !!creds.apiKey, hasAppId: !!creds.appId });
       try {
         upstream = new WebSocket(UPSTREAM_URL, { headers });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
+        console.error('[Spoor ASR Proxy] upstream ctor failed', msg);
         client.send(JSON.stringify({ error: msg }));
         client.close();
         return;
       }
 
-      upstream.on('message', (data, isBinary) => {
+      // Browser `onopen` fires when the local leg is ready — often BEFORE upstream opens.
+      // Without a queue, the gzip full-client-request is silently dropped and the session
+      // hangs forever in "listening" with no error and no transcripts.
+      const pendingFromClient: Buffer[] = [];
+      const MAX_PENDING_FROM_CLIENT = 64;
+
+      const toBuffer = (data: WebSocket.RawData): Buffer => {
+        if (Buffer.isBuffer(data)) return data;
+        if (data instanceof ArrayBuffer) return Buffer.from(data);
+        if (Array.isArray(data)) return Buffer.concat(data);
+        return Buffer.from(data);
+      };
+
+      const flushPendingToUpstream = () => {
+        if (upstream.readyState !== WebSocket.OPEN) return;
+        for (const buf of pendingFromClient) {
+          upstream.send(buf, { binary: true });
+        }
+        pendingFromClient.length = 0;
+      };
+
+      upstream.on('open', () => {
+        console.log('[Spoor ASR Proxy] upstream open', { pending: pendingFromClient.length });
+        flushPendingToUpstream();
+      });
+
+      // Upstream openspeech always uses the binary framing protocol. If we forward with
+      // binary:false (ws sometimes reports isBinary incorrectly), the browser UTF-8-decodes
+      // the bytes and parseServerFrame sees garbage → "ASR frame truncated payload".
+      upstream.on('message', (data) => {
+        const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as Uint8Array);
+        const mt = buf.length >= 2 ? (buf[1]! >> 4) & 0x0f : -1;
+        console.log('[Spoor ASR Proxy] upstream → client', { bytes: buf.length, msgType: mt });
         if (client.readyState === WebSocket.OPEN) {
-          client.send(data, { binary: isBinary });
+          client.send(buf, { binary: true });
         }
       });
       upstream.on('error', (err) => {
+        console.error('[Spoor ASR Proxy] upstream error', err.message);
+        pendingFromClient.length = 0;
         if (client.readyState === WebSocket.OPEN) {
           client.send(JSON.stringify({ error: err.message || 'upstream error' }));
         }
       });
       upstream.on('close', () => {
+        console.log('[Spoor ASR Proxy] upstream close');
+        pendingFromClient.length = 0;
         try {
           client.close();
         } catch {
           /* ignore */
         }
       });
-      client.on('message', (data, isBinary) => {
+      client.on('message', (data) => {
+        const buf = toBuffer(data);
+        const mt = buf.length >= 2 ? (buf[1]! >> 4) & 0x0f : -1;
+        console.log('[Spoor ASR Proxy] client → upstream', { bytes: buf.length, msgType: mt, upstreamState: upstream.readyState });
         if (upstream.readyState === WebSocket.OPEN) {
-          upstream.send(data, { binary: !!isBinary });
+          upstream.send(buf, { binary: true });
+          return;
         }
+        if (pendingFromClient.length >= MAX_PENDING_FROM_CLIENT) {
+          pendingFromClient.shift();
+        }
+        pendingFromClient.push(buf);
       });
       client.on('close', () => {
+        pendingFromClient.length = 0;
         try {
           upstream.close();
         } catch {
@@ -194,6 +241,7 @@ function attachVolcAsrUpgrade(server: {
         }
       });
       client.on('error', () => {
+        pendingFromClient.length = 0;
         try {
           upstream.close();
         } catch {

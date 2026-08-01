@@ -10,6 +10,7 @@ import {
   MSG_SERVER_ERROR,
   SERIAL_JSON,
   COMPRESS_NONE,
+  COMPRESS_GZIP,
   type VolcAsrParseResult,
 } from '../../src/services/volcAsrProtocol';
 
@@ -60,60 +61,48 @@ function buildFrame(opts: {
 
 describe('volcAsrProtocol', () => {
   describe('encodeFullClientRequest', () => {
-    it('emits FLAG_NO_SEQUENCE + SERIAL_JSON + COMPRESS_NONE', () => {
-      const frame = encodeFullClientRequest({ hello: 'world' });
+    it('emits FLAG_NO_SEQUENCE + SERIAL_JSON + COMPRESS_GZIP', async () => {
+      const frame = await encodeFullClientRequest({ hello: 'world' });
       expect(frame[0]).toBe(0x11); // version=1, headerSize=1
       expect((frame[1] >> 4) & 0x0f).toBe(MSG_FULL_CLIENT_REQUEST);
       expect(frame[1] & 0x0f).toBe(0b0000); // FLAG_NO_SEQUENCE
       expect((frame[2] >> 4) & 0x0f).toBe(0b0001); // SERIAL_JSON
-      expect(frame[2] & 0x0f).toBe(0b0000); // COMPRESS_NONE
+      expect(frame[2] & 0x0f).toBe(COMPRESS_GZIP);
     });
 
-    it('writes the JSON length as big-endian uint32', () => {
+    it('writes gzip payload length and inflates back to JSON', async () => {
       const payload = { a: 1 };
       const json = new TextEncoder().encode(JSON.stringify(payload));
-      const frame = encodeFullClientRequest(payload);
+      const frame = await encodeFullClientRequest(payload);
       const view = new DataView(frame.buffer);
       const len = view.getUint32(4, false);
-      expect(len).toBe(json.length);
-      // payload sits at offset 8
-      const body = frame.slice(8, 8 + json.length);
-      expect(new TextDecoder().decode(body)).toBe(new TextDecoder().decode(json));
+      const body = frame.slice(8, 8 + len);
+      expect(body.length).toBe(len);
+      const { gunzipSync } = await import('node:zlib');
+      const inflated = gunzipSync(Buffer.from(body));
+      expect(new TextDecoder().decode(inflated)).toBe(new TextDecoder().decode(json));
     });
   });
 
   describe('encodeAudioOnlyRequest', () => {
-    it('positive-sequence packet uses FLAG_POSITIVE_SEQUENCE + PCM payload size', () => {
+    it('normal packet uses FLAG_NO_SEQUENCE + gzip PCM (no seq slot)', async () => {
       const pcm = bytes(0x01, 0x02, 0x03, 0x04);
-      const frame = encodeAudioOnlyRequest(pcm, 7);
+      const frame = await encodeAudioOnlyRequest(pcm, 7);
       expect((frame[1] >> 4) & 0x0f).toBe(MSG_AUDIO_ONLY_REQUEST);
-      expect(frame[1] & 0x0f).toBe(0b0001); // FLAG_POSITIVE_SEQUENCE
-      const seq = new DataView(frame.buffer).getInt32(4, false);
-      expect(seq).toBe(7);
-      const len = new DataView(frame.buffer).getUint32(8, false);
-      expect(len).toBe(pcm.length);
-      expect(Array.from(frame.slice(12))).toEqual([0x01, 0x02, 0x03, 0x04]);
+      expect(frame[1] & 0x0f).toBe(0b0000); // FLAG_NO_SEQUENCE
+      expect(frame[2] & 0x0f).toBe(COMPRESS_GZIP);
+      const len = new DataView(frame.buffer).getUint32(4, false);
+      const body = frame.slice(8, 8 + len);
+      const { gunzipSync } = await import('node:zlib');
+      expect(Array.from(gunzipSync(Buffer.from(body)))).toEqual([0x01, 0x02, 0x03, 0x04]);
     });
 
-    it('isLast packet encodes a negative sequence (never -0)', () => {
+    it('isLast packet uses FLAG_NEG_NO_SEQUENCE without a sequence field', async () => {
       const empty = new Uint8Array(0);
-      const frame = encodeAudioOnlyRequest(empty, 0, true);
-      expect(frame[1] & 0x0f).toBe(0b0011); // FLAG_NEGATIVE_SEQUENCE
-      const seq = new DataView(frame.buffer).getInt32(4, false);
-      expect(seq).toBeLessThan(0);
-      expect(seq).toBe(-1); // floor: callers passing 0 must yield -1, not -0
-    });
-
-    it('isLast with sequence=42 produces seq=-42', () => {
-      const frame = encodeAudioOnlyRequest(new Uint8Array(0), 42, true);
-      const seq = new DataView(frame.buffer).getInt32(4, false);
-      expect(seq).toBe(-42);
-    });
-
-    it('isLast with negative sequence keeps the magnitude', () => {
-      const frame = encodeAudioOnlyRequest(new Uint8Array(0), -5, true);
-      const seq = new DataView(frame.buffer).getInt32(4, false);
-      expect(seq).toBe(-5);
+      const frame = await encodeAudioOnlyRequest(empty, 0, true);
+      expect(frame[1] & 0x0f).toBe(0b0010); // FLAG_NEG_NO_SEQUENCE
+      // header(4) + size(4) + gzip(empty) — no int32 sequence after header
+      expect(frame.length).toBeGreaterThanOrEqual(8);
     });
   });
 
@@ -148,7 +137,7 @@ describe('volcAsrProtocol', () => {
       });
       const truncated = frame.slice(0, frame.length - 2);
       const r = parseServerFrame(truncated.buffer);
-      expect(r.errorMessage).toBe('ASR frame truncated payload');
+      expect(r.errorMessage).toMatch(/^ASR frame truncated payload/);
     });
 
     it('unsupported compression (sync parser) routes to async instead', () => {
@@ -228,43 +217,69 @@ describe('volcAsrProtocol', () => {
   });
 
   describe('parseServerFrame error-frame handling', () => {
+    /** Real wire format: header (+seq) + errorCode(4) + messageSize(4) + message — NOT size+payload. */
+    function buildErrorFrame(opts: {
+      code: number;
+      message: Uint8Array;
+      serialization: number;
+      flags?: number;
+      seq?: number;
+    }): Uint8Array {
+      const flags = opts.flags ?? 0b0001;
+      const header = new Uint8Array(4);
+      header[0] = 0x11;
+      header[1] = (MSG_SERVER_ERROR << 4) | (flags & 0x0f);
+      header[2] = (opts.serialization << 4) | 0;
+      header[3] = 0;
+      const parts: Uint8Array[] = [header];
+      if (flags & 0x01) {
+        const seq = new Uint8Array(4);
+        new DataView(seq.buffer).setInt32(0, opts.seq ?? 1, false);
+        parts.push(seq);
+      }
+      const code = new Uint8Array(4);
+      new DataView(code.buffer).setInt32(0, opts.code, false);
+      parts.push(code, be32(opts.message.length), opts.message);
+      return concat(...parts);
+    }
+
     it('JSON error frame with error/message keys', () => {
-      const payload = new TextEncoder().encode(JSON.stringify({ error: 'auth failed', code: 401 }));
-      const frame = buildFrame({
-        messageType: MSG_SERVER_ERROR,
-        flags: 0b0001,
-        serialization: 0b0001,
-        payload,
-        seq: 1,
-      });
+      const message = new TextEncoder().encode(JSON.stringify({ error: 'auth failed', code: 401 }));
+      const frame = buildErrorFrame({ code: 45000000, message, serialization: 0b0001 });
       const r = parseServerFrame(frame.buffer);
-      expect(r.errorMessage).toBe('auth failed');
+      expect(r.errorCode).toBe(45000000);
+      expect(r.errorMessage).toBe('Volc ASR error 45000000: auth failed');
     });
 
     it('JSON error frame with message key only', () => {
-      const payload = new TextEncoder().encode(JSON.stringify({ message: 'rate-limited' }));
-      const frame = buildFrame({
-        messageType: MSG_SERVER_ERROR,
-        flags: 0b0001,
-        serialization: 0b0001,
-        payload,
-        seq: 1,
-      });
+      const message = new TextEncoder().encode(JSON.stringify({ message: 'rate-limited' }));
+      const frame = buildErrorFrame({ code: 42, message, serialization: 0b0001 });
       const r = parseServerFrame(frame.buffer);
-      expect(r.errorMessage).toBe('rate-limited');
+      expect(r.errorMessage).toBe('Volc ASR error 42: rate-limited');
     });
 
     it('non-JSON error frame keeps raw text as message', () => {
-      const payload = new TextEncoder().encode('plain text upstream error');
-      const frame = buildFrame({
-        messageType: MSG_SERVER_ERROR,
-        flags: 0b0001,
-        serialization: 0b0000, // SERIAL_NONE
-        payload,
-        seq: 1,
-      });
+      const message = new TextEncoder().encode('plain text upstream error');
+      const frame = buildErrorFrame({ code: 7, message, serialization: 0b0000 });
       const r = parseServerFrame(frame.buffer);
-      expect(r.errorMessage).toBe('plain text upstream error');
+      expect(r.errorMessage).toBe('Volc ASR error 7: plain text upstream error');
+    });
+
+    it('does not misread error code as payload size (regression for truncated 45000008B alert)', () => {
+      const message = new TextEncoder().encode('resource not granted');
+      // 4 header + 4 code + 4 size + msg ≈ 145 when msg is ~133 bytes — matches production report
+      const pad = 'x'.repeat(120);
+      const longMsg = new TextEncoder().encode(`resource not granted ${pad}`);
+      const frame = buildErrorFrame({
+        code: 45000000,
+        message: longMsg,
+        serialization: 0b0000,
+        flags: 0b0000, // no sequence — same as the user screenshot
+      });
+      expect(frame.length).toBeGreaterThan(100);
+      const r = parseServerFrame(frame.buffer);
+      expect(r.errorMessage).toMatch(/^Volc ASR error 45000000:/);
+      expect(r.errorMessage).not.toMatch(/truncated payload/);
     });
   });
 

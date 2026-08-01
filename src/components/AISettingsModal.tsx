@@ -351,7 +351,7 @@ export function AISettingsModal({ isOpen, onClose, config, setConfig }: AISettin
               <input
                 type="text"
                 className="w-full h-10 px-3 bg-[#FAF9F6] border border-[#E6E4DF] rounded-lg text-sm outline-none focus:border-[#C2410C] focus:ring-1 focus:ring-[#C2410C] transition-all font-mono text-xs"
-                placeholder="volc.bigasr.sauc.duration"
+                placeholder="volc.seedasr.sauc.duration"
                 value={config.volcAsrResourceId ?? ''}
                 onChange={e => setConfig({ ...config, volcAsrResourceId: e.target.value })}
               />

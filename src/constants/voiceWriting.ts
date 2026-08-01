@@ -1,5 +1,5 @@
-/** Default Volcengine bigmodel streaming ASR resource (hourly billing). */
-export const VOLC_ASR_DEFAULT_RESOURCE_ID = 'volc.bigasr.sauc.duration';
+/** Default Volcengine Seed ASR 2.0 streaming resource (hourly billing). */
+export const VOLC_ASR_DEFAULT_RESOURCE_ID = 'volc.seedasr.sauc.duration';
 
 /** Upstream ASR WebSocket path (bidirectional bigmodel, optimized). */
 export const VOLC_ASR_UPSTREAM_PATH = '/api/v3/sauc/bigmodel_async';

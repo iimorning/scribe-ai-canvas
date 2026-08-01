@@ -80,16 +80,89 @@ export async function startMicCapture(onPcm: (pcm: Uint8Array) => void): Promise
   );
 
   const audioCtx = new AudioContext();
+  // Some browsers start the context suspended (autoplay policy). If suspended, onaudioprocess
+  // fires with zero-filled input buffers → silent PCM → ASR VAD never fires → no results.
+  if (audioCtx.state === 'suspended') {
+    console.log('[Spoor Mic] AudioContext suspended, resuming');
+    try {
+      await audioCtx.resume();
+    } catch (e) {
+      console.warn('[Spoor Mic] resume failed', e);
+    }
+  }
+  console.log('[Spoor Mic] AudioContext state', audioCtx.state, 'sampleRate', audioCtx.sampleRate);
+
+  // Diagnostics: is the mic track actually live and enabled? Silent input often means the
+  // OS granted a muted/virtual device, or the browser picked the wrong default input.
+  const tracks = stream.getAudioTracks();
+  console.log('[Spoor Mic] tracks', tracks.length, JSON.stringify(tracks.map((t) => ({
+    kind: t.kind,
+    enabled: t.enabled,
+    muted: t.muted,
+    readyState: t.readyState,
+    label: t.label,
+    settings: t.getSettings(),
+  })), null, 2));
+  console.log('[Spoor Mic] stream.active', stream.active);
+  tracks.forEach((t) => {
+    t.onmute = () => console.warn('[Spoor Mic] track muted by system', t.label);
+    t.onunmute = () => console.log('[Spoor Mic] track unmuted', t.label);
+    t.onended = () => console.warn('[Spoor Mic] track ended', t.label);
+  });
+
   const source = audioCtx.createMediaStreamSource(stream);
+
+  // Bypass sanity check: an AnalyserNode reads the same source independently of the
+  // ScriptProcessor. If the analyser sees signal but the processor doesn't, it's a code bug;
+  // if both see silence, it's the device/OS.
+  const analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 256;
+  source.connect(analyser);
+  const analyserBuf = new Uint8Array(analyser.frequencyBinCount);
+  let analyserChecked = 0;
+  const analyserTimer = setInterval(() => {
+    analyser.getByteTimeDomainData(analyserBuf);
+    let max = 0;
+    for (let i = 0; i < analyserBuf.length; i++) {
+      const v = Math.abs(analyserBuf[i]! - 128);
+      if (v > max) max = v;
+    }
+    analyserChecked += 1;
+    if (analyserChecked <= 5 || analyserChecked % 20 === 0) {
+      console.log('[Spoor Mic] analyser peak (0=silence, 128=loud)', max);
+    }
+  }, 500);
   // ~200ms at context rate → good for Volc packet sizing after downsample
   const bufferSize = 4096;
   const processor = audioCtx.createScriptProcessor(bufferSize, 1, 1);
 
+  let pcmCount = 0;
+  let silentStreak = 0;
   processor.onaudioprocess = (e) => {
     const input = e.inputBuffer.getChannelData(0);
     const down = downsampleTo16k(input, audioCtx.sampleRate);
     if (down.length === 0) return;
-    onPcm(floatTo16BitPcm(down));
+    const pcm = floatTo16BitPcm(down);
+    pcmCount += 1;
+    // rms + peak: rms=0 with peak=0 means the buffer is literally all zeros (device silence),
+    // not just a quiet room. Log more precision so a tiny signal isn't rounded away.
+    let sumSq = 0;
+    let peak = 0;
+    for (let i = 0; i < input.length; i++) {
+      const v = input[i]!;
+      sumSq += v * v;
+      const a = Math.abs(v);
+      if (a > peak) peak = a;
+    }
+    const rms = input.length > 0 ? Math.sqrt(sumSq / input.length) : 0;
+    if (rms < 0.0001) silentStreak += 1; else silentStreak = 0;
+    if (pcmCount <= 3 || pcmCount % 50 === 0 || (silentStreak === 5)) {
+      console.log('[Spoor Mic] onaudioprocess', { n: pcmCount, samples: down.length, bytes: pcm.length, sampleRate: audioCtx.sampleRate, rms: rms.toFixed(6), peak: peak.toFixed(6) });
+    }
+    if (silentStreak === 5) {
+      console.warn('[Spoor Mic] 5 consecutive silent frames — mic device may be muted, wrong default device, or blocked by OS privacy settings. Check: Windows 麦克风隐私设置 / 浏览器地址栏麦克风权限 / 默认录音设备');
+    }
+    onPcm(pcm);
   };
 
   source.connect(processor);
@@ -103,6 +176,12 @@ export async function startMicCapture(onPcm: (pcm: Uint8Array) => void): Promise
     async stop() {
       if (stopped) return;
       stopped = true;
+      clearInterval(analyserTimer);
+      try {
+        analyser.disconnect();
+      } catch {
+        /* ignore */
+      }
       // Signal the still-pending getUserMedia (if any) — once everything is resolved this is
       // a no-op, but it prevents a half-resolved capture from injecting a callback after stop.
       abort.abort();
