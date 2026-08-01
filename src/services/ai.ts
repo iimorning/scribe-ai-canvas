@@ -7,6 +7,7 @@ import {
   resolveDoubaoApiKey,
 } from '../constants/doubao';
 import { DEEPSEEK_BASE_URL, DEEPSEEK_DEFAULT_MODEL } from '../constants/deepseek';
+import { MINIMAX_BASE_URL, MINIMAX_DEFAULT_MODEL } from '../constants/minimax';
 
 const LOG_PREFIX = '[Scribe AI]';
 
@@ -180,7 +181,7 @@ async function postOpenAiCompatibleChat(
     });
   } catch (e) {
     console.error(`${LOG_PREFIX} network/fetch failed`, { url, error: formatAiError(e) });
-    throw new Error(`Network error: ${formatAiError(e)}. If this is MiMo or Doubao in the browser, ensure Vite dev server is running (proxy /api/mimo or /api/doubao) or use the desktop app.`);
+    throw new Error(`Network error: ${formatAiError(e)}. If this is MiMo / Doubao / MiniMax in the browser, ensure Vite dev server is running (proxy /api/mimo, /api/doubao, /api/minimax) or use the desktop app.`);
   }
 
   const rawText = await response.text();
@@ -311,7 +312,7 @@ async function postOpenAiCompatibleChatWithOptionalStream(
     });
   } catch (e) {
     console.error(`${LOG_PREFIX} stream network/fetch failed`, { url, error: formatAiError(e) });
-    throw new Error(`Network error: ${formatAiError(e)}. If this is MiMo or Doubao in the browser, ensure Vite dev server is running (proxy /api/mimo or /api/doubao) or use the desktop app.`);
+    throw new Error(`Network error: ${formatAiError(e)}. If this is MiMo / Doubao / MiniMax in the browser, ensure Vite dev server is running (proxy /api/mimo, /api/doubao, /api/minimax) or use the desktop app.`);
   }
 
   if (!response.ok) {
@@ -483,12 +484,14 @@ export async function callUniversalAI({
     config.provider === 'custom' ||
     config.provider === 'mimo' ||
     config.provider === 'deepseek' ||
-    config.provider === 'doubao'
+    config.provider === 'doubao' ||
+    config.provider === 'minimax'
   ) {
     const baseNormalized = (config.baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '');
     const mimoBase = (config.baseUrl || MIMO_TOKEN_PLAN_BASE_URL).replace(/\/$/, '');
     const deepseekBase = (config.baseUrl || DEEPSEEK_BASE_URL).replace(/\/$/, '');
     const doubaoBase = (config.baseUrl || DOUBAO_ARK_BASE_URL).replace(/\/$/, '');
+    const minimaxBase = (config.baseUrl || MINIMAX_BASE_URL).replace(/\/$/, '');
     const chatUrl =
       config.provider === 'mimo'
         ? (isTauriRuntime() ? `${mimoBase}/chat/completions` : '/api/mimo/chat/completions')
@@ -496,7 +499,9 @@ export async function callUniversalAI({
           ? (isTauriRuntime() ? `${deepseekBase}/chat/completions` : '/api/deepseek/chat/completions')
           : config.provider === 'doubao'
             ? (isTauriRuntime() ? `${doubaoBase}/chat/completions` : '/api/doubao/chat/completions')
-            : `${baseNormalized}/chat/completions`;
+            : config.provider === 'minimax'
+              ? (isTauriRuntime() ? `${minimaxBase}/chat/completions` : '/api/minimax/v1/chat/completions')
+              : `${baseNormalized}/chat/completions`;
 
     const model =
       config.model ||
@@ -506,7 +511,9 @@ export async function callUniversalAI({
           ? DEEPSEEK_DEFAULT_MODEL
           : config.provider === 'doubao'
             ? DOUBAO_DEFAULT_MODEL
-            : 'gpt-4o');
+            : config.provider === 'minimax'
+              ? MINIMAX_DEFAULT_MODEL
+              : 'gpt-4o');
     const body = {
       model,
       messages: [

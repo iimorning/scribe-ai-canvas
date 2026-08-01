@@ -8,6 +8,7 @@ import {
   METASO_DOC_LINKS,
   DOUBAO_DOC_LINKS,
   MIMO_DOC_LINKS,
+  MINIMAX_DOC_LINKS,
   OPENAI_DOC_LINKS,
   type DocLink,
 } from '../constants/aiProviderDocs';
@@ -27,6 +28,8 @@ function linkListForProvider(provider: string): DocLink[] {
       return DOUBAO_DOC_LINKS;
     case 'deepseek':
       return DEEPSEEK_DOC_LINKS;
+    case 'minimax':
+      return MINIMAX_DOC_LINKS;
     case 'custom':
       return CUSTOM_ENDPOINT_DOC_LINKS;
     default:
@@ -48,6 +51,8 @@ function blurbKeyForProvider(provider: string): string {
       return 'settings.docs_blurb_doubao';
     case 'deepseek':
       return 'settings.docs_blurb_deepseek';
+    case 'minimax':
+      return 'settings.docs_blurb_minimax';
     case 'custom':
       return 'settings.docs_blurb_custom';
     case 'local_llama':
@@ -147,6 +152,10 @@ export function AISettingsDocsPanel({ provider }: { provider: string }) {
             <div>
               <p className="text-[11px] font-bold text-[#1a1a1a]">{t('settings.docs_provider_deepseek')}</p>
               <DocLinksList links={DEEPSEEK_DOC_LINKS} t={t} />
+            </div>
+            <div>
+              <p className="text-[11px] font-bold text-[#1a1a1a]">{t('settings.docs_provider_minimax')}</p>
+              <DocLinksList links={MINIMAX_DOC_LINKS} t={t} />
             </div>
             <div>
               <p className="text-[11px] font-bold text-[#1a1a1a]">{t('settings.docs_provider_custom')}</p>

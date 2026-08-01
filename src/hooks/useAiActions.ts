@@ -29,7 +29,7 @@ function formatAiFailureAlertMessage(msg: string, provider: string): string {
     return `AI 生成失败\n\n${msg}\n\nF12 → Console 查看 [Spoor] 日志。`;
   }
   return (
-    `AI 生成失败\n\n${msg}\n\n请检查：1) 设置中 Provider / API Key / Base URL 2) 若用浏览器，需 npm run dev 且已重启（豆包 /api/doubao、MiMo /api/mimo 代理）；桌面端用 Tauri 可不依赖代理。\n\nF12 → Console 查看 [Spoor] 日志。`
+    `AI 生成失败\n\n${msg}\n\n请检查：1) 设置中 Provider / API Key / Base URL 2) 若用浏览器，需 npm run dev 且已重启（豆包 /api/doubao、MiMo /api/mimo、MiniMax /api/minimax 代理）；桌面端用 Tauri 可不依赖代理。\n\nF12 → Console 查看 [Spoor] 日志。`
   );
 }
 

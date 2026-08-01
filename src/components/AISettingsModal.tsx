@@ -11,6 +11,7 @@ import {
   hasBuiltinDoubaoApiKey,
 } from '../constants/doubao';
 import { DEEPSEEK_BASE_URL, DEEPSEEK_DEFAULT_MODEL } from '../constants/deepseek';
+import { MINIMAX_BASE_URL, MINIMAX_DEFAULT_MODEL } from '../constants/minimax';
 import { DESKTOP_RELEASE_URL } from '../constants/desktopRelease';
 import { openExternalUrl } from '../utils/openExternal';
 import { isTauriRuntime } from '../utils/isTauriRuntime';
@@ -150,10 +151,16 @@ export function AISettingsModal({ isOpen, onClose, config, setConfig }: AISettin
                        mimo: { model: 'mimo-v2.5-pro', baseUrl: MIMO_TOKEN_PLAN_BASE_URL },
                        doubao: { model: DOUBAO_DEFAULT_MODEL, baseUrl: DOUBAO_ARK_BASE_URL },
                        deepseek: { model: DEEPSEEK_DEFAULT_MODEL, baseUrl: DEEPSEEK_BASE_URL },
+                       minimax: { model: MINIMAX_DEFAULT_MODEL, baseUrl: MINIMAX_BASE_URL },
                        custom: { model: 'gpt-4o', baseUrl: '' },
                        local_llama: { model: 'gemma-4-e4b-it', baseUrl: '' },
                      };
                      const d = defaults[newProvider] || { model: '', baseUrl: '' };
+                     // Local convenience: reuse TTS MiniMax key when switching chat provider to MiniMax.
+                     const reuseMinimaxKey =
+                       newProvider === 'minimax' &&
+                       !(config.apiKey ?? '').trim() &&
+                       !!(config.minimaxApiKey ?? '').trim();
                      setConfig({
                        ...config,
                        provider: newProvider,
@@ -161,7 +168,9 @@ export function AISettingsModal({ isOpen, onClose, config, setConfig }: AISettin
                        baseUrl: d.baseUrl,
                        ...(newProvider === 'local_llama'
                          ? { apiKey: '', localGgufPath: config.localGgufPath ?? '' }
-                         : {}),
+                         : reuseMinimaxKey
+                           ? { apiKey: (config.minimaxApiKey ?? '').trim() }
+                           : {}),
                      });
                    }}
                  >
@@ -171,6 +180,7 @@ export function AISettingsModal({ isOpen, onClose, config, setConfig }: AISettin
                    <option value="mimo">MiMo (小米大模型)</option>
                    <option value="doubao">{t('settings.provider_doubao')}</option>
                    <option value="deepseek">DeepSeek</option>
+                   <option value="minimax">{t('settings.provider_minimax')}</option>
                    <option value="custom">Custom Endpoint</option>
                    <option value="local_llama">{t('settings.provider_local_llama')}</option>
                  </select>
@@ -191,7 +201,9 @@ export function AISettingsModal({ isOpen, onClose, config, setConfig }: AISettin
                              ? DOUBAO_DEFAULT_MODEL
                              : config.provider === 'deepseek'
                                ? DEEPSEEK_DEFAULT_MODEL
-                               : 'gpt-4o'
+                               : config.provider === 'minimax'
+                                 ? MINIMAX_DEFAULT_MODEL
+                                 : 'gpt-4o'
                    }
                    value={config.model}
                    onChange={e => setConfig({ ...config, model: e.target.value })}
@@ -247,7 +259,9 @@ export function AISettingsModal({ isOpen, onClose, config, setConfig }: AISettin
                         ? t('settings.api_key_optional_mimo')
                         : config.provider === 'doubao'
                           ? 'ark-...'
-                          : 'tp-...'
+                          : config.provider === 'minimax'
+                            ? 'sk-cp-...'
+                            : 'tp-...'
                   }
                   value={config.apiKey}
                   onChange={e => setConfig({ ...config, apiKey: e.target.value })}
@@ -255,7 +269,7 @@ export function AISettingsModal({ isOpen, onClose, config, setConfig }: AISettin
               </div>
             )}
 
-            {(config.provider === 'custom' || config.provider === 'openai' || config.provider === 'mimo' || config.provider === 'doubao' || config.provider === 'deepseek') && (
+            {(config.provider === 'custom' || config.provider === 'openai' || config.provider === 'mimo' || config.provider === 'doubao' || config.provider === 'deepseek' || config.provider === 'minimax') && (
               <div className="space-y-2">
                 <label className="text-[10px] font-mono font-bold text-[#8c8a84] uppercase tracking-wider">{t('settings.base_url')}</label>
                 <input
@@ -268,7 +282,9 @@ export function AISettingsModal({ isOpen, onClose, config, setConfig }: AISettin
                         ? DOUBAO_ARK_BASE_URL
                         : config.provider === 'deepseek'
                           ? DEEPSEEK_BASE_URL
-                          : 'https://api.openai.com/v1'
+                          : config.provider === 'minimax'
+                            ? MINIMAX_BASE_URL
+                            : 'https://api.openai.com/v1'
                   }
                   value={config.baseUrl}
                   onChange={e => setConfig({ ...config, baseUrl: e.target.value })}

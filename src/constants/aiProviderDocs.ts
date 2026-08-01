@@ -49,6 +49,12 @@ export const DEEPSEEK_DOC_LINKS: DocLink[] = [
   { href: 'https://api-docs.deepseek.com/quick_start/pricing', labelKey: 'settings.docs_link_deepseek_pricing' },
 ];
 
+/** MiniMax China — Token Plan / OpenAI-compatible chat */
+export const MINIMAX_DOC_LINKS: DocLink[] = [
+  { href: 'https://platform.minimaxi.com/console/plan', labelKey: 'settings.docs_link_minimax_plan' },
+  { href: 'https://platform.minimaxi.com/docs/api-reference/text-openai-api', labelKey: 'settings.docs_link_minimax_openai' },
+];
+
 /** App calls OpenAI-style POST /v1/chat/completions — avoid dead /docs/api-reference/chat/* URLs. */
 export const CUSTOM_ENDPOINT_DOC_LINKS: DocLink[] = [
   { href: 'https://platform.openai.com/api/docs/guides/chat', labelKey: 'settings.docs_link_openai_chat_completions' },
