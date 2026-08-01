@@ -9,6 +9,11 @@ export function parseThreadWebSearchIntent(raw: string): { explicitQuery: string
   const patterns = [
     /^联网搜索\s*/,
     /^联网检索\s*/,
+    // ASR commonly transcribes “联网搜索” as “全网搜索”.
+    /^全网搜索\s*/,
+    /^全网检索\s*/,
+    /^网上搜索\s*/,
+    /^网络搜索\s*/,
     /^web\s*search\s*/i,
   ];
 

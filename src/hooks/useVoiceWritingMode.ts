@@ -10,12 +10,15 @@ import {
 import { db } from '../db';
 import { callUniversalAI, formatAiError } from '../services/ai';
 import { startMicCapture, type MicCapture } from '../services/micCapture';
+import { buildSearchContext, metasoSearch } from '../services/search';
+import { spawnWebSearchCardsFromPages } from '../services/spawnWebSearchNoteCards';
 import { hasVolcAsrCredentials, openVolcAsrSession, type VolcAsrSession } from '../services/volcAsr';
 import { getCanvasCenterPosition } from '../utils/canvas';
 import { runCanvasStreamingAiCall } from '../utils/canvasStreamingAi';
 import { combineSystemParts, getLocaleDirective } from '../utils/aiI18n';
 import { createTtsSentenceQueue } from '../utils/ttsSentenceQueue';
 import { voiceAiPosition, voiceUserPosition, transformToFocusNode } from '../utils/voiceNoteLayout';
+import { parseThreadWebSearchIntent } from '../utils/webSearchCommand';
 import type { CanvasTransform } from './useCanvasInteraction';
 
 export type VoicePhase = 'idle' | 'listening' | 'thinking' | 'speaking';
@@ -260,6 +263,43 @@ export function useVoiceWritingMode({
 
       let replyText = '';
       try {
+        let aiPrompt = userText;
+        const searchIntent = parseThreadWebSearchIntent(userText);
+        if (searchIntent) {
+          const searchKey = (aiConfig.metasoApiKey || '').trim();
+          const query = searchIntent.explicitQuery;
+          if (!searchKey) {
+            void appAlert({ message: t('nodes.search_no_metaso_key') });
+            aiPrompt = '用户请求了联网搜索，但尚未配置秘塔搜索 API Key。请简洁说明这一点，并请用户在设置中配置后重试。';
+          } else if (!query) {
+            void appAlert({ message: t('nodes.search_need_text') });
+            aiPrompt = '用户请求了联网搜索，但没有提供检索关键词。请简洁请用户补充关键词。';
+          } else {
+            try {
+              const searchResult = await metasoSearch(query, { apiKey: searchKey });
+              const pages = searchResult.webpages ?? [];
+              if (pages.length === 0) {
+                void appAlert({ message: t('nodes.search_no_results') });
+                aiPrompt = `用户联网搜索“${query}”但没有获得结果。请简洁告知用户，并建议更具体的检索词。`;
+              } else {
+                const searchContext = buildSearchContext(searchResult);
+                // Show sources as linked cards without holding up the answer / TTS pipeline.
+                void spawnWebSearchCardsFromPages(aiNodeId, aiPos, pages, activeCanvasId);
+                aiPrompt = [
+                  `用户的联网搜索问题：${query}`,
+                  searchContext,
+                  '请仅基于以上来源回答，清楚说明不确定之处；不要提及内部工具或检索流程。',
+                ].join('\n\n');
+              }
+            } catch (e) {
+              const msg = formatAiError(e);
+              console.error('[Spoor] voice web search failed', msg);
+              void appAlert({ message: `${t('nodes.search_failed')}\n\n${msg}` });
+              aiPrompt = `用户联网搜索“${query}”时失败。请简洁告知用户搜索暂时不可用，并建议稍后重试。`;
+            }
+          }
+        }
+
         replyText = await runCanvasStreamingAiCall({
           nodeId: aiNodeId,
           callAi: (onStreamChunk) =>
@@ -269,7 +309,7 @@ export function useVoiceWritingMode({
                 t('ai.prompts.voiceWritingPersona'),
                 getLocaleDirective(),
               ),
-              prompt: userText,
+              prompt: aiPrompt,
               onStreamChunk: (accumulated) => {
                 onStreamChunk(accumulated);
                 tts?.pushAccumulatedText(accumulated);

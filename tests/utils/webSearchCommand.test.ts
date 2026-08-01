@@ -15,6 +15,12 @@ describe('parseThreadWebSearchIntent', () => {
     expect(parseThreadWebSearchIntent('联网检索  foo ')?.explicitQuery).toBe('foo');
   });
 
+  it('detects common voice-transcription variants', () => {
+    expect(parseThreadWebSearchIntent('全网搜索佛山的天气')?.explicitQuery).toBe('佛山的天气');
+    expect(parseThreadWebSearchIntent('网上搜索 AI 新闻')?.explicitQuery).toBe('AI 新闻');
+    expect(parseThreadWebSearchIntent('网络搜索 量子计算')?.explicitQuery).toBe('量子计算');
+  });
+
   it('detects web search (case insensitive)', () => {
     expect(parseThreadWebSearchIntent('Web Search climate')?.explicitQuery).toBe('climate');
   });

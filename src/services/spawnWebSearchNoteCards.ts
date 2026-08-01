@@ -2,10 +2,11 @@ import { db } from '../db';
 import type { MetasoWebpage } from './search';
 
 const DEFAULT_STAGGER_MS = 320;
-const BASE_DX = 260;
-const BASE_DY = 36;
-const COL_STEP = 28;
-const ROW_STEP = 150;
+/** Sources live in a dedicated vertical lane beside the answer, never in a fan of overlaps. */
+const SOURCE_LANE_OFFSET_X = 380;
+const SOURCE_ROW_GAP_Y = 240;
+const SOURCE_CARD_WIDTH = 320;
+const SOURCE_CARD_HEIGHT = 210;
 
 /**
  * Use the first non-empty line of the draft (cap length) as the Metaso query.
@@ -26,7 +27,7 @@ function pageToMarkdown(wp: MetasoWebpage, index: number): string {
 }
 
 /**
- * Create one `text` node per search hit, staggered in time, each linked from the source note.
+ * Create one compact, scrollable source card per hit in a vertical lane beside the source node.
  */
 export async function spawnWebSearchCardsFromPages(
   sourceNodeId: string,
@@ -42,17 +43,16 @@ export async function spawnWebSearchCardsFromPages(
     if (i > 0) {
       await new Promise((r) => setTimeout(r, staggerMs));
     }
-    const col = i % 3;
-    const row = Math.floor(i / 3);
     const id = crypto.randomUUID();
     await db.nodes.add({
       id,
       canvasId: activeCanvasId,
       type: 'text',
       content: pageToMarkdown(list[i], i + 1),
-      x: base.x + BASE_DX + col * COL_STEP,
-      y: base.y + BASE_DY + row * ROW_STEP,
-      width: 300,
+      x: base.x + SOURCE_LANE_OFFSET_X,
+      y: base.y + i * SOURCE_ROW_GAP_Y,
+      width: SOURCE_CARD_WIDTH,
+      height: SOURCE_CARD_HEIGHT,
       layout: 2,
     });
     await db.edges.add({
