@@ -115,6 +115,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('personal');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
   // User Profile
   const { userName, setUserName, userRole, setUserRole, userAvatar, setUserAvatar } = useUserProfile();
@@ -135,10 +136,67 @@ export default function App() {
         nodesRef,
         nodeType: nodeRow?.type,
       });
-      handlePanStart(e);
+      if (e.button === 1) {
+        handlePanStart(e);
+        return;
+      }
+      if (e.button !== 0) return;
+
+      if (connectingFrom) setConnectingFrom(null);
+      e.preventDefault();
+      const main = mainRef.current;
+      if (!main) return;
+      const bounds = main.getBoundingClientRect();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const additive = e.shiftKey;
+      let dragged = false;
+
+      const rectFrom = (clientX: number, clientY: number) => ({
+        x: Math.min(startX, clientX) - bounds.left,
+        y: Math.min(startY, clientY) - bounds.top,
+        width: Math.abs(clientX - startX),
+        height: Math.abs(clientY - startY),
+      });
+      const onPointerMove = (moveEvent: PointerEvent) => {
+        const rect = rectFrom(moveEvent.clientX, moveEvent.clientY);
+        if (rect.width > 4 || rect.height > 4) dragged = true;
+        setMarqueeRect(rect);
+      };
+      const onPointerUp = (upEvent: PointerEvent) => {
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+        const rect = rectFrom(upEvent.clientX, upEvent.clientY);
+        setMarqueeRect(null);
+        if (!dragged) {
+          setSelectedNodes(new Set());
+          return;
+        }
+        const left = bounds.left + rect.x;
+        const top = bounds.top + rect.y;
+        const right = left + rect.width;
+        const bottom = top + rect.height;
+        const ids = Object.entries(nodesRef.current)
+          .filter(([, element]) => {
+            if (!element) return false;
+            const nodeRect = element.getBoundingClientRect();
+            return nodeRect.right >= left && nodeRect.left <= right && nodeRect.bottom >= top && nodeRect.top <= bottom;
+          })
+          .map(([id]) => id);
+        setSelectedNodes((previous) => additive ? new Set([...previous, ...ids]) : new Set(ids));
+      };
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
     },
-    [editingNodeId, dynamicNodes, handlePanStart],
+    [connectingFrom, dynamicNodes, editingNodeId, handlePanStart],
   );
+
+  const handleCanvasPointerCapture = useCallback((e: React.PointerEvent<HTMLElement>) => {
+    if (e.button !== 1) return;
+    e.preventDefault();
+    e.stopPropagation();
+    handleCanvasPanPointerDown(e as React.PointerEvent<HTMLDivElement>);
+  }, [handleCanvasPanPointerDown]);
 
   const [aiConfig, setAiConfig] = useState(() => {
     const saved = localStorage.getItem('ai_config');
@@ -271,9 +329,32 @@ export default function App() {
   }, [activeTab]);
 
   // Node actions (CRUD, selection, linking)
-  const { toggleNodeSelection, handleLink, deleteEdge, removeNodeId, addTextNode, addThemeNode, addFileNode } = useNodeActions({
+  const { toggleNodeSelection, handleLink, deleteEdge, removeNodeId, removeNodeIds, addTextNode, addThemeNode, addFileNode } = useNodeActions({
     activeCanvasId, nodesRef, connectingFrom, setConnectingFrom, edges, selectedNodes, setSelectedNodes, transformRef,
   });
+
+  const selectNode = useCallback((id: string, additive: boolean) => {
+    setSelectedNodes((previous) => {
+      if (!additive) return new Set([id]);
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (activeTab !== 'personal' || isTextEditingTarget(event.target) || selectedNodes.size === 0) return;
+      if (event.key !== 'Backspace' && event.key !== 'Delete') return;
+      event.preventDefault();
+      const ids = [...selectedNodes];
+      if (editingNodeId && ids.includes(editingNodeId)) setEditingNodeId(null);
+      void removeNodeIds(ids);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [activeTab, editingNodeId, removeNodeIds, selectedNodes]);
 
   // AI actions (publish, agent analysis, AI submit)
   const {
@@ -405,6 +486,7 @@ export default function App() {
         <main 
           ref={mainRef} 
           className="flex-1 min-h-0 relative overflow-hidden bg-[#FAF9F6] paper-texture"
+          onPointerDownCapture={handleCanvasPointerCapture}
           onDragOver={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -445,11 +527,22 @@ export default function App() {
             }
           }}
         >
-          {/* Draggable background (pan) */}
+          {/* Empty canvas: click clears selection; drag creates a marquee. Middle button pans. */}
           <div 
-            className="absolute inset-0 cursor-grab active:cursor-grabbing z-0" 
+            className="absolute inset-0 cursor-default z-0" 
             onPointerDown={handleCanvasPanPointerDown}
           />
+          {marqueeRect && (
+            <div
+              className="absolute z-20 pointer-events-none border border-[#C2410C] bg-[#C2410C]/10"
+              style={{
+                left: marqueeRect.x,
+                top: marqueeRect.y,
+                width: marqueeRect.width,
+                height: marqueeRect.height,
+              }}
+            />
+          )}
 
           {/* Symmetrical Controls */}
           <CanvasHistoryPopover canvases={canvases} activeCanvasId={activeCanvasId} setActiveCanvasId={setActiveCanvasId} />
@@ -521,6 +614,7 @@ export default function App() {
                     isSelected={selectedNodes.has(node.id)}
                     isEditing={editingNodeId === node.id}
                     onToggleSelect={() => toggleNodeSelection(node.id)}
+                    onSelect={selectNode}
                     allowPalette={true}
                     onDragEnd={handleNodeDragEnd}
                     onResizeEnd={(size) => {

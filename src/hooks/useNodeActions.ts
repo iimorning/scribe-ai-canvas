@@ -55,6 +55,18 @@ export function useNodeActions({
     db.edges.where('from').equals(id).or('to').equals(id).delete();
   };
 
+  const removeNodeIds = async (ids: Iterable<string>) => {
+    const uniqueIds = [...new Set(ids)];
+    if (uniqueIds.length === 0) return;
+    await db.transaction('rw', db.nodes, db.edges, async () => {
+      await db.nodes.bulkDelete(uniqueIds);
+      for (const id of uniqueIds) {
+        await db.edges.where('from').equals(id).or('to').equals(id).delete();
+      }
+    });
+    setSelectedNodes(new Set());
+  };
+
   const addTextNode = async () => {
     const { x, y } = getCanvasCenterPosition(transformRef.current);
     await db.nodes.add({ id: crypto.randomUUID(), canvasId: activeCanvasId, type: 'text', content: '', x, y });
@@ -91,5 +103,5 @@ export function useNodeActions({
     }
   };
 
-  return { toggleNodeSelection, handleLink, deleteEdge, removeNodeId, addTextNode, addThemeNode, addFileNode };
+  return { toggleNodeSelection, handleLink, deleteEdge, removeNodeId, removeNodeIds, addTextNode, addThemeNode, addFileNode };
 }

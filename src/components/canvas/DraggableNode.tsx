@@ -21,6 +21,7 @@ export interface DraggableNodeProps {
   isSelected?: boolean;
   isEditing?: boolean;
   onToggleSelect?: () => void;
+  onSelect?: (id: string, additive: boolean) => void;
   allowPalette?: boolean;
   onDragEnd?: (id: string, pos: {x: number, y: number}) => void;
   onResizeEnd?: (size: { width: number, height: number }) => void;
@@ -37,7 +38,7 @@ export const DraggableNode: React.FC<DraggableNodeProps> = ({
   id, nodesRef, isConnecting, onLink, children, 
   initialX = 100, initialY = 100, initialWidth = 320, initialHeight = 0,
   onDelete, onCycleLayout, className = '', scale = 1, 
-  isSelected, isEditing, onToggleSelect, allowPalette, onDragEnd, onResizeEnd,
+  isSelected, isEditing, onToggleSelect, onSelect, allowPalette, onDragEnd, onResizeEnd,
   rotation = 0,
   glassSurface = false,
   onStickyActivate,
@@ -63,7 +64,7 @@ export const DraggableNode: React.FC<DraggableNodeProps> = ({
   const paletteColorChoices = glassSurface ? colorPresets.slice(3) : colorPresets;
   return (
     <div 
-      className={`absolute cursor-move group pointer-events-auto select-none ${className} ${isSelected && !hideChrome ? 'ring-2 ring-[#C2410C]' : ''}`}
+      className={`absolute group pointer-events-auto select-none ${isSelected ? 'cursor-move' : 'cursor-default'} ${className} ${isSelected && !hideChrome ? 'ring-2 ring-[#C2410C]' : ''}`}
       data-glass-surface={glassSurface ? '' : undefined}
       data-node-tone={
         styleOverrides.bg
@@ -90,6 +91,19 @@ export const DraggableNode: React.FC<DraggableNodeProps> = ({
           setShowPalette(true);
         }
       }}
+      onClickCapture={(e) => {
+        const target = e.target as HTMLElement;
+        // First click selects a card. Let a subsequent click on the selected card reach
+        // its body, preserving the existing click-to-edit behavior without sacrificing
+        // keyboard selection shortcuts.
+        if (
+          !isEditing &&
+          (!isSelected || e.shiftKey) &&
+          !target.closest('button, input, textarea, [contenteditable="true"]')
+        ) {
+          e.stopPropagation();
+        }
+      }}
       onPointerDown={(e) => {
         const target = e.target as HTMLElement;
         if (
@@ -106,6 +120,7 @@ export const DraggableNode: React.FC<DraggableNodeProps> = ({
           e.preventDefault();
           onLink(id);
         } else {
+          if (e.button === 0) onSelect?.(id, e.shiftKey);
           node.onPointerDown(e);
         }
       }}

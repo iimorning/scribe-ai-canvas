@@ -15,6 +15,8 @@ export function useDraggable(initialX: number, initialY: number, scale: number =
   }, [pos]);
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Middle button is reserved for canvas panning.
+    if (e.button !== 0) return;
     const target = e.target as HTMLElement;
     if (
       target.isContentEditable ||
