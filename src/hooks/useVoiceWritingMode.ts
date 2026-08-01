@@ -15,7 +15,7 @@ import { getCanvasCenterPosition } from '../utils/canvas';
 import { runCanvasStreamingAiCall } from '../utils/canvasStreamingAi';
 import { combineSystemParts, getLocaleDirective } from '../utils/aiI18n';
 import { createTtsSentenceQueue } from '../utils/ttsSentenceQueue';
-import { nextVoiceNotePosition, transformToFocusNode } from '../utils/voiceNoteLayout';
+import { voiceAiPosition, voiceUserPosition, transformToFocusNode } from '../utils/voiceNoteLayout';
 import type { CanvasTransform } from './useCanvasInteraction';
 
 export type VoicePhase = 'idle' | 'listening' | 'thinking' | 'speaking';
@@ -49,9 +49,9 @@ export function useVoiceWritingMode({
   const [voicePhase, setVoicePhase] = useState<VoicePhase>('idle');
 
   const activeRef = useRef(false);
-  const turnIndexRef = useRef(0);
+  const rowRef = useRef(0);
   const currentUserNoteIdRef = useRef<string | null>(null);
-  const lastAnchorRef = useRef<{ x: number; y: number } | null>(null);
+  const originRef = useRef<{ x: number; y: number } | null>(null);
   const micRef = useRef<MicCapture | null>(null);
   const asrRef = useRef<VolcAsrSession | null>(null);
   const ttsRef = useRef<ReturnType<typeof createTtsSentenceQueue> | null>(null);
@@ -214,9 +214,8 @@ export function useVoiceWritingMode({
         await db.nodes.update(userNoteId, { content: userText });
       }
 
-      const anchor = lastAnchorRef.current || getCanvasCenterPosition(transformRef.current);
-      const aiPos = nextVoiceNotePosition(anchor, turnIndexRef.current);
-      turnIndexRef.current += 1;
+      const origin = originRef.current || getCanvasCenterPosition(transformRef.current);
+      const aiPos = voiceAiPosition(origin, rowRef.current);
 
       const aiNodeId = crypto.randomUUID();
       const edgeId = crypto.randomUUID();
@@ -236,7 +235,6 @@ export function useVoiceWritingMode({
           to: aiNodeId,
         });
       }
-      lastAnchorRef.current = aiPos;
       focusNode(aiPos.x, aiPos.y);
       setStreamingAiNodeId(aiNodeId);
       setPhase('thinking');
@@ -309,8 +307,10 @@ export function useVoiceWritingMode({
 
       if (!activeRef.current) return;
 
-      const nextPos = nextVoiceNotePosition(lastAnchorRef.current || aiPos, turnIndexRef.current);
-      turnIndexRef.current += 1;
+      const nextOrigin = originRef.current || getCanvasCenterPosition(transformRef.current);
+      const nextRow = rowRef.current + 1;
+      rowRef.current = nextRow;
+      const nextPos = voiceUserPosition(nextOrigin, nextRow);
       const nextUserId = crypto.randomUUID();
       await db.nodes.add({
         id: nextUserId,
@@ -329,7 +329,6 @@ export function useVoiceWritingMode({
         });
       }
       currentUserNoteIdRef.current = nextUserId;
-      lastAnchorRef.current = nextPos;
       setEditingNodeId(nextUserId);
       focusNode(nextPos.x, nextPos.y);
       await startListeningLoop();
@@ -373,7 +372,7 @@ export function useVoiceWritingMode({
 
     activeRef.current = true;
     setVoiceModeActive(true);
-    turnIndexRef.current = 0;
+    rowRef.current = 0;
     handlingUtteranceRef.current = false;
     enterFullscreen();
 
@@ -389,7 +388,7 @@ export function useVoiceWritingMode({
         y,
       });
       currentUserNoteIdRef.current = userNoteId;
-      lastAnchorRef.current = { x, y };
+      originRef.current = { x, y };
       setEditingNodeId(userNoteId);
       focusNode(x, y);
 

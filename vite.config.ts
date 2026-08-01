@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
 import {volcAsrProxyPlugin} from './vite-plugins/volcAsrProxyPlugin';
+import {minimaxTtsProxyPlugin} from './vite-plugins/minimaxTtsProxyPlugin';
 
 /** 与 tp- Token 套餐控制台一致；开发代理转发到此前缀 */
 const MIMO_PROXY_TARGET = 'https://token-plan-cn.xiaomimimo.com/v1';
@@ -54,7 +55,7 @@ export default defineConfig(({mode, command}) => {
     );
   }
   return {
-    plugins: [react(), tailwindcss(), volcAsrProxyPlugin()],
+    plugins: [react(), tailwindcss(), volcAsrProxyPlugin(), minimaxTtsProxyPlugin()],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
     },

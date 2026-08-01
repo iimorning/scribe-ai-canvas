@@ -15,5 +15,6 @@ export const MINIMAX_DEFAULT_TTS_MODEL = 'speech-2.6-turbo';
 /** Common Mandarin system voice. */
 export const MINIMAX_DEFAULT_VOICE_ID = 'Chinese (Mandarin)_Gentle_Senior';
 
-export const VOICE_NOTE_OFFSET_X = 340;
-export const VOICE_NOTE_OFFSET_Y = 48;
+export const VOICE_NOTE_COLUMN_GAP_X = 360;
+/** Vertical gap between rows in the two-column voice layout (card height + spacing). */
+export const VOICE_NOTE_ROW_GAP_Y = 260;

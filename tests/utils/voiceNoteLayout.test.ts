@@ -1,31 +1,22 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { nextVoiceNotePosition, transformToFocusNode } from '../../src/utils/voiceNoteLayout';
-import { VOICE_NOTE_OFFSET_X, VOICE_NOTE_OFFSET_Y } from '../../src/constants/voiceWriting';
+import { voiceAiPosition, voiceUserPosition, transformToFocusNode } from '../../src/utils/voiceNoteLayout';
+import { VOICE_NOTE_COLUMN_GAP_X, VOICE_NOTE_ROW_GAP_Y } from '../../src/constants/voiceWriting';
 
 describe('voiceNoteLayout', () => {
-  describe('nextVoiceNotePosition', () => {
-    it('first reply (turnIndex=0) offsets +X, +Y', () => {
-      const r = nextVoiceNotePosition({ x: 100, y: 200 }, 0);
-      expect(r.x).toBe(100 + VOICE_NOTE_OFFSET_X);
-      expect(r.y).toBe(200 + VOICE_NOTE_OFFSET_Y);
+  describe('two-column voice positions', () => {
+    it('stacks user cards in the left column', () => {
+      const r = voiceUserPosition({ x: 100, y: 200 }, 2);
+      expect(r.x).toBe(100);
+      expect(r.y).toBe(200 + 2 * VOICE_NOTE_ROW_GAP_Y);
     });
 
-    it('second reply zig-zags the other way (turnIndex=1)', () => {
-      const r = nextVoiceNotePosition({ x: 100, y: 200 }, 1);
-      expect(r.x).toBe(100 + VOICE_NOTE_OFFSET_X);
-      expect(r.y).toBe(200 - VOICE_NOTE_OFFSET_Y);
-    });
-
-    it('zig-zag alternates on even/odd', () => {
-      const even = nextVoiceNotePosition({ x: 0, y: 0 }, 2);
-      const odd = nextVoiceNotePosition({ x: 0, y: 0 }, 3);
-      expect(even.y).toBe(VOICE_NOTE_OFFSET_Y);
-      expect(odd.y).toBe(-VOICE_NOTE_OFFSET_Y);
-    });
-
-    it('does not mutate the input anchor', () => {
+    it('aligns the AI card in the right column on the same row', () => {
       const anchor = { x: 10, y: 20 };
-      nextVoiceNotePosition(anchor, 0);
+      const r = voiceAiPosition(anchor, 3);
+      expect(r).toEqual({
+        x: 10 + VOICE_NOTE_COLUMN_GAP_X,
+        y: 20 + 3 * VOICE_NOTE_ROW_GAP_Y,
+      });
       expect(anchor).toEqual({ x: 10, y: 20 });
     });
   });

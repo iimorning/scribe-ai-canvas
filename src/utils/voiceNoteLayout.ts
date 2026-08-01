@@ -1,14 +1,18 @@
-import { VOICE_NOTE_OFFSET_X, VOICE_NOTE_OFFSET_Y } from '../constants/voiceWriting';
+import { VOICE_NOTE_COLUMN_GAP_X, VOICE_NOTE_ROW_GAP_Y } from '../constants/voiceWriting';
 
 export type VoiceNoteAnchor = { x: number; y: number };
 
-/** Place the next voice-turn note relative to the previous one. */
-export function nextVoiceNotePosition(anchor: VoiceNoteAnchor, turnIndex: number): VoiceNoteAnchor {
-  const zig = turnIndex % 2 === 0 ? 1 : -1;
-  return {
-    x: anchor.x + VOICE_NOTE_OFFSET_X,
-    y: anchor.y + zig * VOICE_NOTE_OFFSET_Y,
-  };
+/**
+ * Two-column voice layout: user notes stack vertically in the left column, AI notes sit
+ * in the right column aligned to the same row. `origin` is the first user note's position;
+ * `row` is the 0-based turn index.
+ */
+export function voiceUserPosition(origin: VoiceNoteAnchor, row: number): VoiceNoteAnchor {
+  return { x: origin.x, y: origin.y + row * VOICE_NOTE_ROW_GAP_Y };
+}
+
+export function voiceAiPosition(origin: VoiceNoteAnchor, row: number): VoiceNoteAnchor {
+  return { x: origin.x + VOICE_NOTE_COLUMN_GAP_X, y: origin.y + row * VOICE_NOTE_ROW_GAP_Y };
 }
 
 /** Pan/zoom so a note near (nodeX, nodeY) sits near viewport center. */

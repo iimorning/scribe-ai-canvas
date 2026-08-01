@@ -1,4 +1,4 @@
-import { synthesizeMinimaxSpeech } from '../services/minimaxTts';
+import { openMinimaxTtsStream, type MinimaxTtsStream } from '../services/minimaxTtsStream';
 import { stripThinking } from './stripThinking';
 
 const SENTENCE_END = /([。！？!?；;\n]+)/;
@@ -24,30 +24,17 @@ function longestCommonPrefix(a: string, b: string): number {
 }
 
 /**
- * Find the longest suffix of `a` that is also a prefix of `b`.
- * Fallback for the rare case where the provider rewinds slightly (e.g. drops a leading
- * character) — LCP would return 0, but the tail of `a` might still match a prefix of `b`.
- */
-function overlapSuffixPrefix(a: string, b: string): number {
-  const max = Math.min(a.length, b.length);
-  for (let len = max; len > 0; len--) {
-    if (a.endsWith(b.slice(0, len))) return len;
-  }
-  return 0;
-}
-
-/**
  * Dedupe anchor length between two accumulated strings. Returns the number of leading chars
  * of `next` that we have already accounted for (as queue entries or carry).
  */
 function dedupeLength(prev: string, next: string): number {
   const lcp = longestCommonPrefix(prev, next);
-  // If LCP covers the full previous content or comes within a small tolerance, trust it.
-  if (lcp >= prev.length || (prev.length > 0 && lcp >= prev.length - 8)) {
+  if (lcp >= prev.length) {
     return lcp;
   }
-  // Fallback: maybe the provider rewound a few chars; see if a suffix of prev still aligns.
-  return overlapSuffixPrefix(prev, next);
+  // Provider corrections are not safe to splice into already queued speech. The caller can
+  // still use sentence-level dedupe for a later stable accumulated response.
+  return 0;
 }
 
 function cutSentences(input: string): { sentences: string[]; carry: string } {
@@ -89,10 +76,10 @@ export function createTtsSentenceQueue(config: TtsQueueConfig) {
   const spoken = new Set<string>();
   let closed = false;
   let speaking = false;
-  const abort = new AbortController();
   const pendingTexts: string[] = [];
-  let pumpRunning = false;
-  let currentAudio: HTMLAudioElement | null = null;
+  let stream: MinimaxTtsStream | null = null;
+  let streamOpening: Promise<void> | null = null;
+  let finishRequested = false;
 
   const setSpeaking = (v: boolean) => {
     if (speaking === v) return;
@@ -100,65 +87,39 @@ export function createTtsSentenceQueue(config: TtsQueueConfig) {
     config.onSpeakingChange?.(v);
   };
 
-  const playBlob = (blob: Blob) =>
-    new Promise<void>((resolve, reject) => {
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      currentAudio = audio;
-      const cleanup = () => {
-        URL.revokeObjectURL(url);
-        if (currentAudio === audio) currentAudio = null;
-      };
-      audio.onended = () => {
-        cleanup();
-        resolve();
-      };
-      audio.onerror = () => {
-        cleanup();
-        reject(new Error('Audio playback failed'));
-      };
-      void audio.play().catch((e) => {
-        cleanup();
-        reject(e instanceof Error ? e : new Error(String(e)));
+  const ensureStream = () => {
+    if (streamOpening) return streamOpening;
+    streamOpening = openMinimaxTtsStream({
+      apiKey: config.apiKey,
+      model: config.model,
+      voiceId: config.voiceId,
+      onSpeakingChange: setSpeaking,
+      onError: config.onError,
+    })
+      .then((opened) => {
+        if (closed) {
+          opened.stop();
+          return;
+        }
+        stream = opened;
+        while (pendingTexts.length > 0) stream.enqueueText(pendingTexts.shift()!);
+        if (finishRequested) stream.finish();
+      })
+      .catch((e) => {
+        if (!closed) config.onError?.(e instanceof Error ? e.message : String(e));
       });
-    });
+    return streamOpening;
+  };
 
   const enqueueSentence = (sentence: string) => {
     const t = sentence.trim();
     if (!t || closed) return;
     if (spoken.has(t)) return; // never repeat a sentence already spoken
     spoken.add(t);
-    pendingTexts.push(t);
-    void pump();
-  };
-
-  const pump = async () => {
-    if (pumpRunning) return;
-    if (closed) return;
-    pumpRunning = true;
-    setSpeaking(true);
-    try {
-      while (!closed && pendingTexts.length > 0) {
-        const text = pendingTexts.shift()!;
-        try {
-          const blob = await synthesizeMinimaxSpeech({
-            apiKey: config.apiKey,
-            text,
-            model: config.model,
-            voiceId: config.voiceId,
-            signal: abort.signal,
-          });
-          if (closed) break;
-          await playBlob(blob);
-        } catch (e) {
-          if (closed || abort.signal.aborted) break;
-          config.onError?.(e instanceof Error ? e.message : String(e));
-        }
-      }
-    } finally {
-      pumpRunning = false;
-      if (pendingTexts.length === 0) setSpeaking(false);
-      else if (!closed) void pump();
+    if (stream) stream.enqueueText(t);
+    else {
+      pendingTexts.push(t);
+      void ensureStream();
     }
   };
 
@@ -171,8 +132,7 @@ export function createTtsSentenceQueue(config: TtsQueueConfig) {
       // Trim both sides before matching so a ` 你好。` (leading space) dedupes correctly.
       const trimmed = cleaned.replace(/^\s+/u, '');
       if (!trimmed) return;
-      const prior = consumed + carry;
-      const overlap = dedupeLength(prior.replace(/\s+$/u, ''), trimmed);
+      const overlap = dedupeLength(consumed.replace(/\s+$/u, ''), trimmed);
       const newPart = trimmed.slice(overlap);
       // `consumed` mirrors the real streamed text (with spacing) so the next LCP aligns.
       consumed = trimmed;
@@ -189,23 +149,18 @@ export function createTtsSentenceQueue(config: TtsQueueConfig) {
         enqueueSentence(t);
         carry = '';
       }
+      finishRequested = true;
+      if (stream) stream.finish();
+      else void ensureStream();
     },
     async waitUntilIdle() {
-      while (pumpRunning || pendingTexts.length > 0) {
-        await new Promise((r) => setTimeout(r, 80));
-        if (closed) break;
-      }
+      await ensureStream();
+      await stream?.waitUntilIdle();
     },
     stop() {
       closed = true;
       pendingTexts.length = 0;
-      abort.abort();
-      try {
-        currentAudio?.pause();
-      } catch {
-        /* ignore */
-      }
-      currentAudio = null;
+      stream?.stop();
       setSpeaking(false);
     },
   };
