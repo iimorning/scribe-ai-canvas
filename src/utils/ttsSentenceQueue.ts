@@ -80,10 +80,13 @@ function cutSentences(input: string): { sentences: string[]; carry: string } {
  * already appears at the tail of `seenConcat` so an erroneously re-delivered tail is skipped.
  */
 export function createTtsSentenceQueue(config: TtsQueueConfig) {
-  // Concatenation of every sentence we've enqueued. Doubles as a dedup anchor: a sentence
-  // already at the tail of `seenConcat` must not be enqueued again.
-  let seenConcat = '';
+  // The full cleaned accumulated text we have already processed, WITH original spacing.
+  // Used as the LCP dedup anchor so inter-sentence spaces don't break alignment.
+  let consumed = '';
   let carry = '';
+  // Every sentence text we've ever enqueued — a sentence already spoken must never be
+  // spoken again, regardless of where it sits in the stream.
+  const spoken = new Set<string>();
   let closed = false;
   let speaking = false;
   const abort = new AbortController();
@@ -123,6 +126,8 @@ export function createTtsSentenceQueue(config: TtsQueueConfig) {
   const enqueueSentence = (sentence: string) => {
     const t = sentence.trim();
     if (!t || closed) return;
+    if (spoken.has(t)) return; // never repeat a sentence already spoken
+    spoken.add(t);
     pendingTexts.push(t);
     void pump();
   };
@@ -165,35 +170,23 @@ export function createTtsSentenceQueue(config: TtsQueueConfig) {
       // Providers often normalize streaming boundaries with leading/trailing whitespace.
       // Trim both sides before matching so a ` 你好。` (leading space) dedupes correctly.
       const trimmed = cleaned.replace(/^\s+/u, '');
-      const prior = (seenConcat + carry).replace(/\s+$/u, '');
       if (!trimmed) return;
-      const overlap = dedupeLength(prior, trimmed);
+      const prior = consumed + carry;
+      const overlap = dedupeLength(prior.replace(/\s+$/u, ''), trimmed);
       const newPart = trimmed.slice(overlap);
-      if (!newPart) return;
+      // `consumed` mirrors the real streamed text (with spacing) so the next LCP aligns.
+      consumed = trimmed;
 
       const { sentences, carry: nextCarry } = cutSentences(carry + newPart);
-      // Sentence-level dedup: drop any sentence that's already at the tail of seenConcat.
-      // Trim BEFORE the dedup check so a leading-whitespace "correction" doesn't bypass the
-      // suffix comparison.
       for (const s of sentences) {
-        const t = s.trim();
-        if (!t) continue;
-        if (seenConcat.endsWith(t)) {
-          if (!carry) carry = s;
-          continue;
-        }
-        seenConcat += t;
-        enqueueSentence(t);
+        enqueueSentence(s);
       }
       carry = nextCarry;
     },
     flush() {
       const t = carry.trim();
       if (t) {
-        if (!seenConcat.endsWith(t)) {
-          seenConcat += t;
-          enqueueSentence(t);
-        }
+        enqueueSentence(t);
         carry = '';
       }
     },
