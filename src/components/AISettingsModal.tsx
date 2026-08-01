@@ -371,7 +371,7 @@ export function AISettingsModal({ isOpen, onClose, config, setConfig }: AISettin
                 <input
                   type="text"
                   className="w-full h-10 px-3 bg-[#FAF9F6] border border-[#E6E4DF] rounded-lg text-sm outline-none focus:border-[#C2410C] focus:ring-1 focus:ring-[#C2410C] transition-all font-mono text-xs"
-                  placeholder="male-qn-qingse"
+                  placeholder="Chinese (Mandarin)_Gentle_Senior"
                   value={config.minimaxVoiceId ?? ''}
                   onChange={e => setConfig({ ...config, minimaxVoiceId: e.target.value })}
                 />

@@ -13,7 +13,7 @@ export const MINIMAX_API_ORIGIN = 'https://api.minimaxi.com';
 export const MINIMAX_DEFAULT_TTS_MODEL = 'speech-2.6-turbo';
 
 /** Common Mandarin system voice. */
-export const MINIMAX_DEFAULT_VOICE_ID = 'male-qn-qingse';
+export const MINIMAX_DEFAULT_VOICE_ID = 'Chinese (Mandarin)_Gentle_Senior';
 
 export const VOICE_NOTE_OFFSET_X = 340;
 export const VOICE_NOTE_OFFSET_Y = 48;

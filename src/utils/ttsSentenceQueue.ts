@@ -1,4 +1,5 @@
 import { synthesizeMinimaxSpeech } from '../services/minimaxTts';
+import { stripThinking } from './stripThinking';
 
 const SENTENCE_END = /([。！？!?；;\n]+)/;
 
@@ -159,9 +160,11 @@ export function createTtsSentenceQueue(config: TtsQueueConfig) {
   return {
     pushAccumulatedText(accumulated: string) {
       if (closed) return;
+      // Never read chain-of-thought blocks aloud.
+      const cleaned = stripThinking(accumulated);
       // Providers often normalize streaming boundaries with leading/trailing whitespace.
       // Trim both sides before matching so a ` 你好。` (leading space) dedupes correctly.
-      const trimmed = accumulated.replace(/^\s+/u, '');
+      const trimmed = cleaned.replace(/^\s+/u, '');
       const prior = (seenConcat + carry).replace(/\s+$/u, '');
       if (!trimmed) return;
       const overlap = dedupeLength(prior, trimmed);

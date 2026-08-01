@@ -1,5 +1,6 @@
 import { db } from '../db';
 import { createThrottle } from './aiStreamThrottle';
+import { stripThinking } from './stripThinking';
 
 export const DEFAULT_STREAM_THROTTLE_MS = 100;
 
@@ -16,7 +17,7 @@ export function createStreamChunkWriter(
   }, throttleMs);
 
   return {
-    onStreamChunk: (accumulated) => throttle.call(accumulated),
+    onStreamChunk: (accumulated) => throttle.call(stripThinking(accumulated)),
     flush: async () => {
       throttle.flush();
     },
@@ -40,14 +41,15 @@ export async function runCanvasStreamingAiCall({
   try {
     const text = await callAi(writer.onStreamChunk);
     await writer.flush();
-    const trimmed = (text ?? '').trim();
+    const cleaned = stripThinking(text ?? '');
+    const trimmed = cleaned.trim();
     if (!trimmed) {
       writer.cancel();
       await db.nodes.delete(nodeId);
       return '';
     }
-    await db.nodes.update(nodeId, { content: text ?? '' });
-    return text ?? '';
+    await db.nodes.update(nodeId, { content: cleaned });
+    return cleaned;
   } catch (e) {
     writer.cancel();
     try {
