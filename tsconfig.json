@@ -18,6 +18,9 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@testing-library/react-impl": [
+        "./node_modules/@testing-library/react"
       ]
     },
     "allowImportingTsExtensions": true,

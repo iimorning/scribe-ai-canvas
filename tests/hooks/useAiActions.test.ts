@@ -8,7 +8,7 @@ import type { AIConfig } from '../../src/components/AISettingsModal';
 
 /** Stable vi.fn() across re-renders so assertions stay valid after async handlers trigger state updates. */
 function stableMockFn<T extends (...args: any[]) => any>(): T {
-  return useRef(vi.fn()).current as T;
+  return useRef(vi.fn()).current as unknown as T;
 }
 
 const publishJsonResponse = vi.hoisted(() =>
@@ -58,7 +58,7 @@ const baseAiConfig: AIConfig = {
 function useTestAiActions(opts?: {
   agentConfigs?: AgentConfig[];
   selectedNodes?: Set<string>;
-  edges?: { from: string; to: string; id?: string }[];
+  edges?: { from: string; to: string; id?: string; canvasId?: string }[];
   dynamicNodes?: CanvasNode[];
   aiConfigOverrides?: Partial<AIConfig>;
 }) {

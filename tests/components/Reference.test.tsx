@@ -126,7 +126,7 @@ describe('Reference', () => {
   it('引用文献按钮写入剪贴板', async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.spyOn(navigator, 'clipboard', 'get').mockReturnValue({ writeText } as Clipboard);
+    vi.spyOn(navigator, 'clipboard', 'get').mockReturnValue({ writeText } as unknown as Clipboard);
 
     const withAuthor = { ...articleA, author: 'Jane' };
     await db.articles.add(withAuthor);
@@ -171,7 +171,7 @@ describe('Reference', () => {
   it('引用文献使用草稿作者与日期（未保存到 DB 前）', async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.spyOn(navigator, 'clipboard', 'get').mockReturnValue({ writeText } as Clipboard);
+    vi.spyOn(navigator, 'clipboard', 'get').mockReturnValue({ writeText } as unknown as Clipboard);
 
     await db.articles.add(articleA);
 

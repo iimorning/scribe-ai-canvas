@@ -58,6 +58,7 @@ describe('画布节点 blur 写库源码契约', () => {
     expect(src).not.toContain('Send');
     expect(src).toMatch(/isToolbarAiLoading \? <Loader2[\s\S]*?: <Wand2/);
     const wandCount = (src.match(/<Wand2/g) ?? []).length;
-    expect(wandCount).toBe(1);
+    // 1× 提交钮 + 1× 折叠态圆形手柄，均合法。
+    expect(wandCount).toBe(2);
   });
 });

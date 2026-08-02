@@ -30,13 +30,13 @@ describe('doubao builtin API key', () => {
   });
 
   it('formatDoubaoKeyMissingError mentions Netlify in production', () => {
-    vi.stubEnv('PROD', 'true');
+    vi.stubEnv('PROD', true);
     expect(formatDoubaoKeyMissingError()).toMatch(/Netlify/);
     expect(formatDoubaoKeyMissingError()).toMatch(/无需自行配置/);
   });
 
   it('formatDoubaoKeyMissingError mentions setup script in dev', () => {
-    vi.stubEnv('PROD', '');
+    vi.stubEnv('PROD', false);
     expect(formatDoubaoKeyMissingError()).toMatch(/setup:doubao-key/);
   });
 });

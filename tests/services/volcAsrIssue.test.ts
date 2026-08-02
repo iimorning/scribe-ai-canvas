@@ -4,8 +4,7 @@ import { issueVolcAsrToken } from '../../src/services/volcAsr';
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
-  // @ts-expect-error replace for test
-  globalThis.fetch = vi.fn();
+  globalThis.fetch = vi.fn() as unknown as typeof fetch;
 });
 afterEach(() => {
   globalThis.fetch = originalFetch;

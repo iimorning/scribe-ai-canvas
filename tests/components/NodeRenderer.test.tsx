@@ -23,6 +23,7 @@ vi.mock('lucide-react', () => {
     'Focus', 'Image', 'FilePlus', 'Trash2', 'Link2', 'X', 'Camera', 'ChevronLeft',
     'ChevronRight', 'Check', 'Cpu', 'ArrowRight', 'ListChecks', 'CheckCircle2',
     'Loader2', 'PenLine', 'Edit3', 'FileText', 'Play', 'GitBranch', 'Layers2',
+    'ExternalLink', 'StickyNote', 'Square',
   ];
   const icons: Record<string, React.FC> = {};
   for (const name of iconNames) {

@@ -48,7 +48,7 @@ describe('spawnBookExpandCards', () => {
     await db.nodes.clear();
     await db.edges.clear();
     let n = 0;
-    vi.spyOn(globalThis.crypto, 'randomUUID').mockImplementation(() => `id-${++n}`);
+    vi.spyOn(globalThis.crypto, 'randomUUID').mockImplementation((() => `id-${++n}`) as any);
   });
 
   it('creates hub + branches linked from the book', async () => {

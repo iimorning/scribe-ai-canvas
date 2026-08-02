@@ -71,7 +71,7 @@ vi.mock('../../src/services/ai', () => ({
 }));
 vi.mock('../../src/utils/canvasStreamingAi', () => ({
   runCanvasStreamingAiCall: vi.fn(async ({ callAi }: { callAi: (cb: (s: string) => void) => Promise<void> | void }) => {
-    await callAi('hello');
+    await (callAi as (s: any) => any)('hello');
     return 'AI reply';
   }),
 }));
