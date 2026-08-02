@@ -4,11 +4,69 @@ import { BookOpen, ChevronLeft, ChevronRight, GitBranch, Loader2, Sparkles } fro
 import { db } from '../../db';
 import type { BookNodeProps } from './types';
 import { CANVAS_NODE_CONTEXT_TEXT_ATTR } from '../../utils/canvasNodeContextText';
+import type { BookContentBlock } from '../../utils/bookPayload';
 import { tryParseBookContent } from '../../utils/bookPayload';
 
 function clampPageIndex(index: number, unitCount: number): number {
   if (unitCount <= 0) return 0;
   return Math.min(Math.max(0, index), unitCount - 1);
+}
+
+const HEADING_CLASS: Record<1 | 2 | 3 | 4 | 5 | 6, string> = {
+  1: 'text-[1.35rem] font-bold tracking-wide text-[#2a2a26] leading-snug mt-1 mb-3 first:mt-0',
+  2: 'text-[1.15rem] font-bold text-[#2a2a26] leading-snug mt-4 mb-2 first:mt-0',
+  3: 'text-base font-semibold text-[#2a2a26] leading-snug mt-3 mb-2 first:mt-0',
+  4: 'text-[0.95rem] font-semibold text-[#3a3a34] leading-snug mt-3 mb-1.5 first:mt-0',
+  5: 'text-sm font-semibold text-[#3a3a34] leading-snug mt-2 mb-1 first:mt-0',
+  6: 'text-sm font-medium text-[#4a4a44] leading-snug mt-2 mb-1 first:mt-0',
+};
+
+function BookUnitBody({
+  blocks,
+  fallbackText,
+}: {
+  blocks?: BookContentBlock[];
+  fallbackText: string;
+}) {
+  if (!blocks || blocks.length === 0) {
+    return <>{fallbackText}</>;
+  }
+  return (
+    <>
+      {blocks.map((block, i) => {
+        if (block.type === 'image') {
+          return (
+            <figure key={`img-${i}`} className="my-3 first:mt-0 last:mb-0">
+              <img
+                src={block.src}
+                alt={block.alt || ''}
+                className="max-w-full h-auto mx-auto block rounded-sm"
+                draggable={false}
+              />
+              {block.alt ? (
+                <figcaption className="mt-1 text-[11px] font-sans text-[#8c8a84] text-center leading-snug">
+                  {block.alt}
+                </figcaption>
+              ) : null}
+            </figure>
+          );
+        }
+        if (block.type === 'heading') {
+          const Tag = (`h${block.level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6');
+          return (
+            <Tag key={`h-${i}`} className={HEADING_CLASS[block.level]}>
+              {block.text}
+            </Tag>
+          );
+        }
+        return (
+          <div key={`txt-${i}`} className="whitespace-pre-wrap my-2 first:mt-0 last:mb-0">
+            {block.text}
+          </div>
+        );
+      })}
+    </>
+  );
 }
 
 export function BookNode({
@@ -39,6 +97,7 @@ export function BookNode({
 
   useEffect(() => {
     setAskUi(null);
+    if (bodyRef.current) bodyRef.current.scrollTop = 0;
   }, [node.id, safeIndex]);
 
   const clearAskUi = useCallback(() => setAskUi(null), []);
@@ -110,6 +169,9 @@ export function BookNode({
 
   const formatBadge = book.format === 'pdf' ? 'PDF' : 'EPUB';
   const unitText = unit?.text?.trim() || t('nodes.book_page_no_text');
+  const hasHeadingBlocks = Boolean(unit?.blocks?.some((b) => b.type === 'heading'));
+  // Avoid duplicating the chapter title when body already renders h1–h6.
+  const showUnitTitle = Boolean(unit?.title && book.format === 'epub' && !hasHeadingBlocks);
   const showSelectionActions = askUi && (onAskAboutSelection || onExpandSelection) && !isExpanding;
 
   return (
@@ -143,17 +205,19 @@ export function BookNode({
         <div
           ref={bodyRef}
           data-no-drag=""
-          className="h-full overflow-y-auto min-h-0 pr-1 custom-scrollbar text-sm font-serif leading-relaxed text-[#4a4a44] select-text cursor-text whitespace-pre-wrap"
+          className={`h-full overflow-y-auto min-h-0 pr-1 custom-scrollbar text-sm font-serif leading-relaxed text-[#4a4a44] select-text cursor-text${
+            unit?.blocks?.length ? '' : ' whitespace-pre-wrap'
+          }`}
           {...{ [CANVAS_NODE_CONTEXT_TEXT_ATTR]: '' }}
           onPointerDown={(e) => e.stopPropagation()}
           onMouseUp={updateSelectionAsk}
         >
-          {unit?.title && book.format === 'epub' && (
+          {showUnitTitle && (
             <div className="text-[11px] font-sans font-semibold text-[#8c8a84] mb-2 tracking-wide">
-              {unit.title}
+              {unit?.title}
             </div>
           )}
-          {unitText}
+          <BookUnitBody blocks={unit?.blocks} fallbackText={unitText} />
         </div>
 
         {showSelectionActions && askUi && (

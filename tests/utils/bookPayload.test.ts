@@ -21,4 +21,37 @@ describe('bookPayload', () => {
     expect(tryParseBookContent(undefined)).toBeNull();
     expect(tryParseBookContent(BOOK_CONTENT_PREFIX + '{bad')).toBeNull();
   });
+
+  it('preserves image and heading blocks on round-trip', () => {
+    const encoded = encodeBookContent({
+      format: 'epub',
+      title: 'With Art',
+      units: [
+        {
+          title: '1',
+          text: 'Chapter\n\nHello\n\n[图: Chart]',
+          blocks: [
+            { type: 'heading', level: 1, text: 'Chapter' },
+            { type: 'text', text: 'Hello' },
+            { type: 'image', src: 'data:image/png;base64,abc', alt: 'Chart' },
+          ],
+        },
+      ],
+    });
+    expect(tryParseBookContent(encoded)).toEqual({
+      format: 'epub',
+      title: 'With Art',
+      units: [
+        {
+          title: '1',
+          text: 'Chapter\n\nHello\n\n[图: Chart]',
+          blocks: [
+            { type: 'heading', level: 1, text: 'Chapter' },
+            { type: 'text', text: 'Hello' },
+            { type: 'image', src: 'data:image/png;base64,abc', alt: 'Chart' },
+          ],
+        },
+      ],
+    });
+  });
 });
