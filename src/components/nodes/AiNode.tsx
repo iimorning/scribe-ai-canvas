@@ -82,8 +82,8 @@ export function AiNode({
     const el = followUpTaRef.current;
     if (!el || !showFollowUp) return;
     el.style.height = 'auto';
-    const cap = 160;
-    el.style.height = `${Math.min(Math.max(el.scrollHeight, 36), cap)}px`;
+    const cap = 140;
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 28), cap)}px`;
   }, [draft, showFollowUp]);
 
   const handleSubmit = () => {
@@ -193,7 +193,7 @@ export function AiNode({
               disabled={!!isFollowUpDisabled}
               placeholder={t('nodes.ai_follow_up_placeholder')}
               rows={1}
-              className="w-full resize-none overflow-y-auto scrollbar-hide rounded-lg border border-[#E6E4DF]/90 bg-white/80 pl-3 pr-10 py-1.5 text-xs leading-snug text-[#1a1a1a] placeholder:text-[#a8a6a0] focus:outline-none focus:ring-1 focus:ring-[#C2410C]/30 disabled:opacity-50"
+              className="w-full resize-none overflow-y-auto scrollbar-hide rounded-md border border-[#E6E4DF]/90 bg-white/80 pl-2.5 pr-9 py-1 text-xs leading-tight text-[#1a1a1a] placeholder:text-[#a8a6a0] focus:outline-none focus:ring-1 focus:ring-[#C2410C]/30 disabled:opacity-50"
             />
             <button
               type="button"
