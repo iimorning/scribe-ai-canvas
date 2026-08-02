@@ -21,6 +21,7 @@ import { parsePublishArticleResponse } from '../utils/parsePublishArticleRespons
 import { db } from '../db';
 import { useAppDialog } from '../components/AppDialogProvider';
 import { runCanvasStreamingAiCall } from '../utils/canvasStreamingAi';
+import { parseBookExpandPlan, spawnBookExpandCards } from '../services/spawnBookExpandCards';
 
 function formatAiFailureAlertMessage(msg: string, provider: string): string {
   const hostedDoubaoUnavailable =
@@ -70,6 +71,7 @@ export function useAiActions({
   const [aiPrompt, setAiPrompt] = useState('');
   /** Passage quoted from a book node (“Ask AI” on selection). */
   const [pendingQuote, setPendingQuote] = useState<{ text: string; sourceLabel?: string } | null>(null);
+  const [expandingBookNodeId, setExpandingBookNodeId] = useState<string | null>(null);
   const [intentClarification, setIntentClarification] = useState<{
     original: string;
     options: [string, string, string];
@@ -77,6 +79,7 @@ export function useAiActions({
   } | null>(null);
   const [isToolbarIntentPreflight, setIsToolbarIntentPreflight] = useState(false);
   const followUpGuardRef = useRef(false);
+  const expandGuardRef = useRef(false);
 
   const THREAD_GAP = 24;
 
@@ -90,6 +93,7 @@ export function useAiActions({
     analyzingAgentNodeId !== null ||
     followUpParentId !== null ||
     streamingAiNodeId !== null ||
+    expandingBookNodeId !== null ||
     intentClarification !== null;
 
   const handlePublish = async () => {
@@ -212,6 +216,64 @@ export function useAiActions({
   };
 
   const clearPendingQuote = () => setPendingQuote(null);
+
+  const expandBookSelection = async (
+    bookNodeId: string,
+    quote: string,
+    sourceLabel?: string,
+  ) => {
+    const passage = quote.replace(/\s+/g, ' ').trim();
+    if (!passage || expandGuardRef.current || isAnyAiBusy) return;
+
+    const bookNode = dynamicNodes.find((n) => n.id === bookNodeId);
+    if (!bookNode || bookNode.type !== 'book') return;
+
+    expandGuardRef.current = true;
+    setExpandingBookNodeId(bookNodeId);
+    try {
+      const text = await callUniversalAI({
+        config: aiConfig,
+        systemInstruction: combineSystemParts(
+          t('ai.prompts.bookExpandSystem'),
+          getLocaleDirective(),
+        ),
+        prompt: t('ai.prompts.bookExpandUser', {
+          source: sourceLabel?.trim() || bookNode.description || '',
+          passage,
+        }),
+      });
+      const plan = parseBookExpandPlan(text ?? '');
+      if (!plan) {
+        void appAlert({ message: t('nodes.book_expand_parse_failed') });
+        return;
+      }
+      await spawnBookExpandCards({
+        bookNodeId,
+        canvasId: activeCanvasId,
+        bookPos: {
+          x: bookNode.x,
+          y: bookNode.y,
+          width: bookNode.width,
+          height: bookNode.height,
+        },
+        plan,
+      });
+    } catch (e) {
+      const msg = formatAiError(e);
+      console.error('[Spoor] expandBookSelection failed', {
+        error: msg,
+        provider: aiConfig.provider,
+        model: aiConfig.model,
+        apiKey: maskApiKeyForLog(aiConfig.apiKey),
+      });
+      void appAlert({
+        message: formatAiFailureAlertMessage(msg, aiConfig.provider),
+      });
+    } finally {
+      expandGuardRef.current = false;
+      setExpandingBookNodeId(null);
+    }
+  };
 
   const runToolbarAiGeneration = async (request: string) => {
     const { x, y } = getCanvasCenterPosition(transformRef.current);
@@ -599,6 +661,8 @@ export function useAiActions({
     pendingQuote,
     askAboutSelection,
     clearPendingQuote,
+    expandBookSelection,
+    expandingBookNodeId,
     handlePublish,
     triggerAgentAnalysis,
     handleAiSubmit,

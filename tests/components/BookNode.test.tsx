@@ -22,6 +22,8 @@ vi.mock('lucide-react', () => {
     ChevronLeft: icon('ChevronLeft'),
     ChevronRight: icon('ChevronRight'),
     Sparkles: icon('Sparkles'),
+    GitBranch: icon('GitBranch'),
+    Loader2: icon('Loader2'),
   };
 });
 

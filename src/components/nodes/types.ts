@@ -6,6 +6,13 @@ export interface NodeContentProps {
   setEditingNodeId: (id: string | null) => void;
 }
 
+export interface ThemeNodeProps extends NodeContentProps {
+  /** Book-expand branch cards linked from this theme hub. */
+  bookExpandBranchCount?: number;
+  bookExpandBranchesCollapsed?: boolean;
+  onToggleBookExpandBranches?: () => void;
+}
+
 export interface AgentNodeProps extends NodeContentProps {
   agentConfigs: AgentConfig[];
   isAnalyzing?: boolean;
@@ -31,4 +38,7 @@ export interface AiNodeProps extends NodeContentProps {
 export interface BookNodeProps extends NodeContentProps {
   /** Quote selected text into the toolbar AI context. */
   onAskAboutSelection?: (quote: string, sourceLabel?: string) => void;
+  /** Expand selected text into a theme hub + linked note cards. */
+  onExpandSelection?: (quote: string, sourceLabel?: string) => void;
+  isExpanding?: boolean;
 }

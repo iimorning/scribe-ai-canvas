@@ -31,6 +31,12 @@ export interface CanvasNode {
   webSearchParentId?: string;
   /** 文本卡：在来源列中的顺序（0-based） */
   webSearchIndex?: number;
+  /** 主题卡：书籍展开分支是否叠放收起 */
+  bookExpandBranchesCollapsed?: boolean;
+  /** 文本卡：所属书籍展开主题卡 id */
+  bookExpandParentId?: string;
+  /** 文本卡：在书籍展开分支中的顺序（0-based） */
+  bookExpandIndex?: number;
 }
 
 export interface Canvas {

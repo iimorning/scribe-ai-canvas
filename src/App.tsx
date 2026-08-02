@@ -50,6 +50,12 @@ import {
   sourceStackZIndex,
   webSearchSourceIndex,
 } from './services/spawnWebSearchNoteCards';
+import {
+  bookExpandBranchIndex,
+  bookExpandStackZIndex,
+  resolveBookExpandBranches,
+  setBookExpandBranchesCollapsed,
+} from './services/spawnBookExpandCards';
 /** 控制台执行 localStorage.setItem('SCRIBE_DEBUG_DND','1') 并刷新；桌面打包版也可用（不设 DEV 门槛）。 */
 const DEBUG_DND =
   typeof localStorage !== 'undefined' &&
@@ -368,6 +374,8 @@ export default function App() {
     pendingQuote,
     askAboutSelection,
     clearPendingQuote,
+    expandBookSelection,
+    expandingBookNodeId,
     handlePublish,
     triggerAgentAnalysis,
     handleAiSubmit,
@@ -402,6 +410,24 @@ export default function App() {
     return map;
   }, [dynamicNodes, edges]);
 
+  const bookExpandBranchCountByHub = React.useMemo(() => {
+    const map = new Map<string, number>();
+    for (const node of dynamicNodes) {
+      if (node.type !== 'theme') continue;
+      const linkedFromBook = edges.some(
+        (e) => e.to === node.id && dynamicNodes.find((n) => n.id === e.from)?.type === 'book',
+      );
+      const isExpandHub =
+        node.bookExpandBranchesCollapsed !== undefined ||
+        dynamicNodes.some((n) => n.bookExpandParentId === node.id) ||
+        linkedFromBook;
+      if (!isExpandHub) continue;
+      const count = resolveBookExpandBranches(node.id, dynamicNodes, edges).length;
+      if (count > 0) map.set(node.id, count);
+    }
+    return map;
+  }, [dynamicNodes, edges]);
+
   const toggleWebSearchSources = useCallback(
     (parentId: string) => {
       const parent = dynamicNodes.find((n) => n.id === parentId);
@@ -414,6 +440,22 @@ export default function App() {
         nodes: dynamicNodes,
         edges,
         anchorHeight,
+      });
+    },
+    [dynamicNodes, edges, nodesRef],
+  );
+
+  const toggleBookExpandBranches = useCallback(
+    (hubId: string) => {
+      const hub = dynamicNodes.find((n) => n.id === hubId);
+      if (!hub || hub.type !== 'theme') return;
+      const el = nodesRef.current[hubId];
+      const hubHeight =
+        hub.height && hub.height > 0 ? hub.height : el?.offsetHeight || undefined;
+      void setBookExpandBranchesCollapsed(hubId, !hub.bookExpandBranchesCollapsed, {
+        nodes: dynamicNodes,
+        edges,
+        hubHeight,
       });
     },
     [dynamicNodes, edges, nodesRef],
@@ -621,9 +663,18 @@ export default function App() {
                 const stackedParent = stackedParentId
                   ? dynamicNodes.find((n) => n.id === stackedParentId && n.type === 'ai')
                   : undefined;
-                const stacked =
+                const webStacked =
                   !!stackedParent?.webSearchSourcesCollapsed &&
                   webSearchSourceCountByParent.has(stackedParent.id);
+
+                const bookHub = node.bookExpandParentId
+                  ? dynamicNodes.find((n) => n.id === node.bookExpandParentId && n.type === 'theme')
+                  : undefined;
+                const bookStacked =
+                  !!bookHub?.bookExpandBranchesCollapsed &&
+                  bookExpandBranchCountByHub.has(bookHub.id);
+
+                const stacked = webStacked || bookStacked;
 
                 let rotation =
                   (node.type === 'note' || node.type === 'text') ? (node.layout === 0 || node.layout === undefined ? 1 : 0) :
@@ -631,9 +682,17 @@ export default function App() {
                   (node.type === 'image') ? -1 :
                   (node.type === 'video') ? 1 :
                   (node.type === 'document') ? 1 : 0;
-                if (stacked) {
+                if (webStacked) {
                   rotation = sourceStackTiltDeg(webSearchSourceIndex(node));
+                } else if (bookStacked) {
+                  rotation = 0;
                 }
+
+                const stackZ = webStacked
+                  ? sourceStackZIndex(webSearchSourceIndex(node))
+                  : bookStacked
+                    ? bookExpandStackZIndex(bookExpandBranchIndex(node))
+                    : undefined;
 
                 return (
                   <DraggableNode 
@@ -643,7 +702,7 @@ export default function App() {
                     initialWidth={node.width} initialHeight={node.height}
                     onDelete={() => removeNodeId(node.id)} scale={canvasTransform.scale}
                     rotation={rotation}
-                    zIndexOverride={stacked ? sourceStackZIndex(webSearchSourceIndex(node)) : undefined}
+                    zIndexOverride={stackZ}
                     onCycleLayout={
                       nodeSupportsCycleLayout(node.type)
                         ? () => {
@@ -688,10 +747,16 @@ export default function App() {
                     webSearchSourceCount={webSearchSourceCountByParent.get(node.id) ?? 0}
                     webSearchSourcesCollapsed={!!node.webSearchSourcesCollapsed}
                     onToggleWebSearchSources={toggleWebSearchSources}
+                    bookExpandBranchCount={bookExpandBranchCountByHub.get(node.id) ?? 0}
+                    onToggleBookExpandBranches={toggleBookExpandBranches}
                     ttsHighlightSentence={
                       ttsHighlight?.nodeId === node.id ? ttsHighlight.sentence : null
                     }
                     onAskAboutBookSelection={askAboutSelection}
+                    onExpandBookSelection={(quote, sourceLabel) => {
+                      void expandBookSelection(node.id, quote, sourceLabel);
+                    }}
+                    expandingBookNodeId={expandingBookNodeId}
                   />
                 </DraggableNode>
               );

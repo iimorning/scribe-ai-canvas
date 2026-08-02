@@ -28,6 +28,10 @@ interface NodeRendererProps {
   onToggleWebSearchSources?: (nodeId: string) => void;
   ttsHighlightSentence?: string | null;
   onAskAboutBookSelection?: (quote: string, sourceLabel?: string) => void;
+  onExpandBookSelection?: (quote: string, sourceLabel?: string) => void;
+  expandingBookNodeId?: string | null;
+  bookExpandBranchCount?: number;
+  onToggleBookExpandBranches?: (hubId: string) => void;
 }
 
 export function NodeRenderer({
@@ -47,10 +51,25 @@ export function NodeRenderer({
   onToggleWebSearchSources,
   ttsHighlightSentence,
   onAskAboutBookSelection,
+  onExpandBookSelection,
+  expandingBookNodeId,
+  bookExpandBranchCount,
+  onToggleBookExpandBranches,
 }: NodeRendererProps) {
   switch (node.type) {
     case 'theme':
-      return <ThemeNode node={node} editingNodeId={editingNodeId} setEditingNodeId={setEditingNodeId} />;
+      return (
+        <ThemeNode
+          node={node}
+          editingNodeId={editingNodeId}
+          setEditingNodeId={setEditingNodeId}
+          bookExpandBranchCount={bookExpandBranchCount}
+          bookExpandBranchesCollapsed={!!node.bookExpandBranchesCollapsed}
+          onToggleBookExpandBranches={
+            onToggleBookExpandBranches ? () => onToggleBookExpandBranches(node.id) : undefined
+          }
+        />
+      );
     case 'note':
     case 'text':
       return (
@@ -91,6 +110,8 @@ export function NodeRenderer({
           editingNodeId={editingNodeId}
           setEditingNodeId={setEditingNodeId}
           onAskAboutSelection={onAskAboutBookSelection}
+          onExpandSelection={onExpandBookSelection}
+          isExpanding={expandingBookNodeId === node.id}
         />
       );
     case 'agent':

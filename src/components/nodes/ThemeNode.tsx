@@ -1,8 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Sparkles } from 'lucide-react';
+import { Layers2, Sparkles } from 'lucide-react';
 import { db } from '../../db';
-import type { NodeContentProps } from './types';
+import type { ThemeNodeProps } from './types';
 import { isContentBlurPersistenceDisabled } from '../../config/persistence';
 import { CANVAS_NODE_CONTEXT_TEXT_ATTR } from '../../utils/canvasNodeContextText';
 
@@ -48,7 +48,13 @@ function ThemeEditableField({ as: Tag, nodeId, displayValue, className, onPersis
   );
 }
 
-export function ThemeNode({ node, editingNodeId }: NodeContentProps) {
+export function ThemeNode({
+  node,
+  editingNodeId,
+  bookExpandBranchCount = 0,
+  bookExpandBranchesCollapsed = false,
+  onToggleBookExpandBranches,
+}: ThemeNodeProps) {
   const { t } = useTranslation();
 
   const defaultThemeFooter = node.layout === 3 ? 'LATENT_SPACE' : 'Spatial Encoding';
@@ -56,6 +62,7 @@ export function ThemeNode({ node, editingNodeId }: NodeContentProps) {
     node.themeTag !== undefined && node.themeTag.trim() !== '' ? node.themeTag : defaultThemeFooter;
   const descriptionDisplay =
     node.description || 'Central research objective for the current workspace.';
+  const showBranchesToggle = bookExpandBranchCount > 1 && !!onToggleBookExpandBranches;
 
   const persistField = (field: 'content' | 'description' | 'themeTag') => (raw: string) => {
     if (isContentBlurPersistenceDisabled()) return;
@@ -68,7 +75,7 @@ export function ThemeNode({ node, editingNodeId }: NodeContentProps) {
 
   return (
     <div
-      className={`w-full h-full shadow-xl border-2 transition-all duration-500 flex flex-col ${
+      className={`relative w-full h-full shadow-xl border-2 transition-all duration-500 flex flex-col ${
         node.layout === 1 ? 'p-8 border-l-4 border-[#C2410C] bg-white border-[#E6E4DF]' :
         node.layout === 2 ? 'p-10 bg-[#1a1a1a] text-white border-[#333] shadow-2xl' :
         node.layout === 3 ? 'p-6 border-2 border-black bg-white' :
@@ -76,6 +83,41 @@ export function ThemeNode({ node, editingNodeId }: NodeContentProps) {
       }`}
       style={{ outline: '1px solid transparent' }}
     >
+      {showBranchesToggle ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleBookExpandBranches?.();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          title={
+            bookExpandBranchesCollapsed
+              ? t('nodes.expand_book_branches')
+              : t('nodes.collapse_book_branches')
+          }
+          aria-label={
+            bookExpandBranchesCollapsed
+              ? t('nodes.expand_book_branches')
+              : t('nodes.collapse_book_branches')
+          }
+          className={`absolute top-3 right-3 z-20 flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-sans font-medium shadow-sm transition-colors ${
+            node.layout === 2
+              ? 'border-white/20 bg-white/10 text-white/80 hover:border-[#C2410C]/60 hover:text-[#FDBA74]'
+              : 'border-[#E6E4DF] bg-white/90 text-[#5a5a54] hover:border-[#C2410C]/50 hover:text-[#C2410C]'
+          }`}
+        >
+          <Layers2 className="h-3.5 w-3.5" aria-hidden />
+          <span>
+            {bookExpandBranchesCollapsed
+              ? t('nodes.expand_book_branches_short')
+              : t('nodes.collapse_book_branches_short')}
+          </span>
+          <span className={`tabular-nums ${node.layout === 2 ? 'text-white/45' : 'text-[#a8a6a0]'}`}>
+            {bookExpandBranchCount}
+          </span>
+        </button>
+      ) : null}
       <div className={`flex items-center space-x-2 mb-3 ${node.layout === 3 ? 'hidden' : ''}`}>
         <Sparkles className={`w-3 h-3 ${node.layout === 2 ? 'text-[#C2410C]' : 'text-[#C2410C]'}`} />
         <span className={`text-[10px] font-sans font-bold uppercase tracking-widest ${node.layout === 2 ? 'text-[#8c8a84]' : 'text-[#C2410C]'}`}>{t('nodes.theme')}</span>
