@@ -50,6 +50,8 @@ export function useVoiceWritingMode({
   const { alert: appAlert } = useAppDialog();
   const [voiceModeActive, setVoiceModeActive] = useState(false);
   const [voicePhase, setVoicePhase] = useState<VoicePhase>('idle');
+  /** Follow-along highlight while MiniMax TTS plays a sentence on an AI card. */
+  const [ttsHighlight, setTtsHighlight] = useState<{ nodeId: string; sentence: string } | null>(null);
 
   const activeRef = useRef(false);
   const rowRef = useRef(0);
@@ -134,6 +136,7 @@ export function useVoiceWritingMode({
     startingRef.current = false;
     latestTranscriptRef.current = '';
     finishListeningRoundRef.current = null;
+    setTtsHighlight(null);
     void teardownSession().finally(() => {
       setStreamingAiNodeId(null);
       setVoiceModeActive(false);
@@ -291,6 +294,14 @@ export function useVoiceWritingMode({
                 if (!activeRef.current) return;
                 if (speaking) setPhase('speaking');
               },
+              onActiveSentenceChange: (sentence) => {
+                if (!activeRef.current) return;
+                if (!sentence) {
+                  setTtsHighlight(null);
+                  return;
+                }
+                setTtsHighlight({ nodeId: aiNodeId, sentence });
+              },
               onError: (message) => {
                 console.error('[Spoor] MiniMax TTS', message);
                 void appAlert({ message: t('voice.tts_error', { message }) });
@@ -380,6 +391,7 @@ export function useVoiceWritingMode({
         void appAlert({ message: t('voice.ai_error', { message: msg }) });
       } finally {
         setStreamingAiNodeId(null);
+        setTtsHighlight(null);
         ttsRef.current?.stop();
         ttsRef.current = null;
       }
@@ -527,6 +539,7 @@ export function useVoiceWritingMode({
   return {
     voiceModeActive,
     voicePhase,
+    ttsHighlight,
     toggleVoiceMode,
     stopVoiceMode,
   };

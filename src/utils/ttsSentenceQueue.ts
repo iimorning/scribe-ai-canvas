@@ -8,6 +8,8 @@ export type TtsQueueConfig = {
   model?: string;
   voiceId?: string;
   onSpeakingChange?: (speaking: boolean) => void;
+  /** Current sentence whose audio is playing; `null` when idle. */
+  onActiveSentenceChange?: (sentence: string | null) => void;
   onError?: (message: string) => void;
 };
 
@@ -94,6 +96,7 @@ export function createTtsSentenceQueue(config: TtsQueueConfig) {
       model: config.model,
       voiceId: config.voiceId,
       onSpeakingChange: setSpeaking,
+      onActiveTextChange: config.onActiveSentenceChange,
       onError: config.onError,
     })
       .then((opened) => {
@@ -162,6 +165,7 @@ export function createTtsSentenceQueue(config: TtsQueueConfig) {
       pendingTexts.length = 0;
       stream?.stop();
       setSpeaking(false);
+      config.onActiveSentenceChange?.(null);
     },
   };
 }

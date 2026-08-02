@@ -25,6 +25,7 @@ interface NodeRendererProps {
   webSearchSourceCount?: number;
   webSearchSourcesCollapsed?: boolean;
   onToggleWebSearchSources?: (nodeId: string) => void;
+  ttsHighlightSentence?: string | null;
 }
 
 export function NodeRenderer({
@@ -42,6 +43,7 @@ export function NodeRenderer({
   webSearchSourceCount,
   webSearchSourcesCollapsed,
   onToggleWebSearchSources,
+  ttsHighlightSentence,
 }: NodeRendererProps) {
   switch (node.type) {
     case 'theme':
@@ -70,6 +72,7 @@ export function NodeRenderer({
           onToggleWebSearchSources={
             onToggleWebSearchSources ? () => onToggleWebSearchSources(node.id) : undefined
           }
+          ttsHighlightSentence={ttsHighlightSentence}
         />
       );
     case 'image':

@@ -377,7 +377,7 @@ export default function App() {
     dynamicNodes, edges, selectedNodes, setSelectedNodes, setActiveReferenceId, setActiveTab,
   });
 
-  const { voiceModeActive, voicePhase, toggleVoiceMode } = useVoiceWritingMode({
+  const { voiceModeActive, voicePhase, ttsHighlight, toggleVoiceMode } = useVoiceWritingMode({
     aiConfig,
     activeCanvasId,
     transformRef,
@@ -685,6 +685,9 @@ export default function App() {
                     webSearchSourceCount={webSearchSourceCountByParent.get(node.id) ?? 0}
                     webSearchSourcesCollapsed={!!node.webSearchSourcesCollapsed}
                     onToggleWebSearchSources={toggleWebSearchSources}
+                    ttsHighlightSentence={
+                      ttsHighlight?.nodeId === node.id ? ttsHighlight.sentence : null
+                    }
                   />
                 </DraggableNode>
               );

@@ -24,4 +24,6 @@ export interface AiNodeProps extends NodeContentProps {
   webSearchSourceCount?: number;
   webSearchSourcesCollapsed?: boolean;
   onToggleWebSearchSources?: () => void;
+  /** Sentence currently being read aloud (voice mode TTS follow-along). */
+  ttsHighlightSentence?: string | null;
 }

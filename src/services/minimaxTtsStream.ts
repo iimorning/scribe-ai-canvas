@@ -20,6 +20,8 @@ export type MinimaxTtsStreamOptions = {
   model?: string;
   voiceId?: string;
   onSpeakingChange?: (speaking: boolean) => void;
+  /** Fires when a sentence's audio actually starts playing; `null` when the queue goes idle. */
+  onActiveTextChange?: (text: string | null) => void;
   onError?: (message: string) => void;
 };
 
@@ -85,11 +87,37 @@ export async function openMinimaxTtsStream(options: MinimaxTtsStreamOptions): Pr
   let audioChain: Promise<void> = Promise.resolve();
   const texts: string[] = [];
   const idleWaiters: Array<() => void> = [];
+  /** Sentence currently being synthesized (may still be ahead of audible playback). */
+  let currentTaskText: string | null = null;
+  /** Whether we've already armed the playhead highlight for `currentTaskText`. */
+  let taskPlayheadArmed = false;
+  const playheadTimers: ReturnType<typeof setTimeout>[] = [];
+
+  let activeText: string | null = null;
 
   const setSpeaking = (value: boolean) => {
     if (speaking === value) return;
     speaking = value;
     options.onSpeakingChange?.(value);
+  };
+
+  const setActiveText = (text: string | null) => {
+    if (activeText === text) return;
+    activeText = text;
+    options.onActiveTextChange?.(text);
+  };
+
+  const clearPlayheadTimers = () => {
+    while (playheadTimers.length) clearTimeout(playheadTimers.shift()!);
+  };
+
+  /** Arm highlight for when this sentence's first audio buffer actually starts. */
+  const armPlayheadAt = (text: string, audioTime: number, ctx: AudioContext) => {
+    const delayMs = Math.max(0, (audioTime - ctx.currentTime) * 1000);
+    const timer = setTimeout(() => {
+      if (!closed) setActiveText(text);
+    }, delayMs);
+    playheadTimers.push(timer);
   };
 
   const fail = (message: string) => {
@@ -99,7 +127,9 @@ export async function openMinimaxTtsStream(options: MinimaxTtsStreamOptions): Pr
   const isIdle = () => finishSent && !taskInFlight && texts.length === 0 && activeSources === 0;
   const settleIdle = () => {
     if (!isIdle()) return;
+    clearPlayheadTimers();
     setSpeaking(false);
+    setActiveText(null);
     while (idleWaiters.length) idleWaiters.shift()?.();
   };
 
@@ -112,6 +142,8 @@ export async function openMinimaxTtsStream(options: MinimaxTtsStreamOptions): Pr
     const text = texts.shift();
     if (text) {
       taskInFlight = true;
+      currentTaskText = text;
+      taskPlayheadArmed = false;
       send({ event: 'task_continue', text });
       return;
     }
@@ -122,7 +154,7 @@ export async function openMinimaxTtsStream(options: MinimaxTtsStreamOptions): Pr
     }
   };
 
-  const schedulePcm = (hex: string) => {
+  const schedulePcm = (hex: string, announceText: string | null) => {
     // Count before awaiting resume so task_final cannot settle the session prematurely.
     activeSources += 1;
     audioChain = audioChain
@@ -143,6 +175,9 @@ export async function openMinimaxTtsStream(options: MinimaxTtsStreamOptions): Pr
         source.connect(audioContext.destination);
         const startAt = Math.max(audioContext.currentTime + 0.03, scheduledUntil);
         scheduledUntil = startAt + buffer.duration;
+        if (announceText) {
+          armPlayheadAt(announceText, startAt, audioContext);
+        }
         setSpeaking(true);
         source.onended = () => {
           activeSources -= 1;
@@ -198,7 +233,12 @@ export async function openMinimaxTtsStream(options: MinimaxTtsStreamOptions): Pr
       return;
     }
     if (payload.event === 'task_continued') {
-      if (payload.data?.audio) schedulePcm(payload.data.audio);
+      if (payload.data?.audio) {
+        // Highlight follows audible playback, not synthesis start (synth runs ahead).
+        const announce = !taskPlayheadArmed ? currentTaskText : null;
+        if (announce) taskPlayheadArmed = true;
+        schedulePcm(payload.data.audio, announce);
+      }
       if (payload.is_final) {
         taskInFlight = false;
         sendNext();
@@ -235,10 +275,14 @@ export async function openMinimaxTtsStream(options: MinimaxTtsStreamOptions): Pr
       if (closed) return;
       closed = true;
       texts.length = 0;
+      currentTaskText = null;
+      taskPlayheadArmed = false;
+      clearPlayheadTimers();
       try { ws.close(); } catch { /* ignore */ }
       try { void audioContext?.close(); } catch { /* ignore */ }
       activeSources = 0;
       setSpeaking(false);
+      setActiveText(null);
       while (idleWaiters.length) idleWaiters.shift()?.();
     },
   };

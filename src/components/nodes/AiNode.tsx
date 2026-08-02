@@ -6,6 +6,54 @@ import { db } from '../../db';
 import type { AiNodeProps } from './types';
 import { isContentBlurPersistenceDisabled } from '../../config/persistence';
 import { CANVAS_NODE_CONTEXT_TEXT_ATTR } from '../../utils/canvasNodeContextText';
+import { findSentenceRange } from '../../utils/ttsHighlight';
+
+function TtsFollowAlongBody({
+  content,
+  sentence,
+  scrollParentRef,
+}: {
+  content: string;
+  sentence: string;
+  scrollParentRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const markRef = useRef<HTMLElement | null>(null);
+  const range = findSentenceRange(content, sentence);
+
+  useLayoutEffect(() => {
+    const mark = markRef.current;
+    const parent = scrollParentRef.current;
+    if (!mark || !parent) return;
+    const parentRect = parent.getBoundingClientRect();
+    const markRect = mark.getBoundingClientRect();
+    const pad = 12;
+    // Instant scroll keeps the playhead aligned with speech; smooth animation lags behind audio.
+    if (markRect.top < parentRect.top + pad || markRect.bottom > parentRect.bottom - pad) {
+      mark.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+    }
+  }, [sentence, content, scrollParentRef]);
+
+  if (!range) {
+    return (
+      <div className="whitespace-pre-wrap text-sm text-[#4a4a44] font-serif leading-relaxed min-h-[40px]">
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <div className="whitespace-pre-wrap text-sm text-[#4a4a44] font-serif leading-relaxed min-h-[40px]">
+      <span className="text-[#8c8a84]">{content.slice(0, range.start)}</span>
+      <span
+        ref={markRef}
+        className="text-[#C2410C] underline decoration-[#C2410C]/45 decoration-2 underline-offset-[3px]"
+      >
+        {content.slice(range.start, range.end)}
+      </span>
+      <span className="text-[#b0aea8]">{content.slice(range.end)}</span>
+    </div>
+  );
+}
 
 export function AiNode({
   node,
@@ -18,13 +66,16 @@ export function AiNode({
   webSearchSourceCount = 0,
   webSearchSourcesCollapsed = false,
   onToggleWebSearchSources,
+  ttsHighlightSentence = null,
 }: AiNodeProps) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState('');
   const followUpTaRef = useRef<HTMLTextAreaElement>(null);
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
 
   const showFollowUp = onSubmitFollowUp && !node.followUpSent;
   const showSourcesToggle = webSearchSourceCount > 1 && !!onToggleWebSearchSources;
+  const followAlong = Boolean(ttsHighlightSentence && (node.content || '').trim());
 
   useLayoutEffect(() => {
     const el = followUpTaRef.current;
@@ -41,29 +92,47 @@ export function AiNode({
     setDraft('');
   };
 
-  const renderAiBody = () =>
-    editingNodeId === node.id ? (
-      <div
-        autoFocus
-        className="whitespace-pre-wrap text-sm text-[#4a4a44] font-serif leading-relaxed focus:outline-none bg-[#EAE7E2]/50 rounded px-1 -mx-1 transition-colors cursor-text min-h-[40px]"
-        contentEditable
-        suppressContentEditableWarning
-        onBlur={(e) => {
-          if (!isContentBlurPersistenceDisabled()) {
-            db.nodes.update(node.id, { content: e.currentTarget.innerText });
-          }
-          setEditingNodeId(null);
-        }}
-      >
-        {node.content}
-      </div>
-    ) : isContentStreaming ? (
-      <div className="whitespace-pre-wrap text-sm text-[#4a4a44] font-serif leading-relaxed min-h-[40px]">
-        {node.content || (
-          <span className="text-[#8c8a84] italic">{t('nodes.ai_streaming')}</span>
-        )}
-      </div>
-    ) : (
+  const renderAiBody = () => {
+    if (editingNodeId === node.id) {
+      return (
+        <div
+          autoFocus
+          className="whitespace-pre-wrap text-sm text-[#4a4a44] font-serif leading-relaxed focus:outline-none bg-[#EAE7E2]/50 rounded px-1 -mx-1 transition-colors cursor-text min-h-[40px]"
+          contentEditable
+          suppressContentEditableWarning
+          onBlur={(e) => {
+            if (!isContentBlurPersistenceDisabled()) {
+              db.nodes.update(node.id, { content: e.currentTarget.innerText });
+            }
+            setEditingNodeId(null);
+          }}
+        >
+          {node.content}
+        </div>
+      );
+    }
+
+    if (followAlong && ttsHighlightSentence) {
+      return (
+        <TtsFollowAlongBody
+          content={node.content || ''}
+          sentence={ttsHighlightSentence}
+          scrollParentRef={bodyScrollRef}
+        />
+      );
+    }
+
+    if (isContentStreaming) {
+      return (
+        <div className="whitespace-pre-wrap text-sm text-[#4a4a44] font-serif leading-relaxed min-h-[40px]">
+          {node.content || (
+            <span className="text-[#8c8a84] italic">{t('nodes.ai_streaming')}</span>
+          )}
+        </div>
+      );
+    }
+
+    return (
       <div
         onClick={() => setEditingNodeId(node.id)}
         className="markdown-body text-sm text-[#4a4a44] font-serif leading-relaxed cursor-text min-h-[40px]"
@@ -71,6 +140,7 @@ export function AiNode({
         <Markdown>{node.content}</Markdown>
       </div>
     );
+  };
 
   return (
     <div className="w-full h-full bg-[#F4F1ED] p-6 shadow-lg border border-[#E6E4DF] flex flex-col relative">
@@ -111,13 +181,19 @@ export function AiNode({
               {node.userTurn}
             </div>
           </div>
-          <div className="min-h-0 max-h-[min(14rem,38vh)] overflow-y-auto pr-1 scrollbar-hide flex-1">
+          <div
+            ref={bodyScrollRef}
+            className="min-h-0 max-h-[min(14rem,38vh)] overflow-y-auto pr-1 scrollbar-hide flex-1"
+          >
             {renderAiBody()}
           </div>
         </>
       ) : (
         <>
-          <div className="min-h-0 max-h-[min(14rem,38vh)] overflow-y-auto pr-1 scrollbar-hide flex-1">
+          <div
+            ref={bodyScrollRef}
+            className="min-h-0 max-h-[min(14rem,38vh)] overflow-y-auto pr-1 scrollbar-hide flex-1"
+          >
             {renderAiBody()}
           </div>
         </>
