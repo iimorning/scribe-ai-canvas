@@ -49,10 +49,6 @@ const defaultProps = () => ({
   setCanvasTransform: vi.fn(),
   transformRef: { current: { x: 0, y: 0, scale: 1 } },
   activeCanvasId: 'default',
-  intentClarification: null,
-  isIntentSubmitting: false,
-  onCancelIntentClarification: vi.fn(),
-  onConfirmIntentClarification: vi.fn(),
 });
 
 describe('CanvasToolbar', () => {

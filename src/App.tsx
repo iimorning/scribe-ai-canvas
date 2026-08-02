@@ -373,7 +373,6 @@ export default function App() {
   const {
     isPublishing,
     isToolbarAiLoading,
-    isToolbarIntentPreflight,
     analyzingAgentNodeId,
     followUpParentId,
     streamingAiNodeId,
@@ -392,9 +391,6 @@ export default function App() {
     triggerAgentAnalysis,
     handleAiSubmit,
     submitAiThreadFollowUp,
-    intentClarification,
-    cancelIntentClarification,
-    confirmIntentClarification,
   } = useAiActions({
     aiConfig, agentConfigs, activeCanvasId, nodesRef, transformRef,
     dynamicNodes, edges, selectedNodes, setSelectedNodes, setActiveReferenceId, setActiveTab,
@@ -821,17 +817,13 @@ export default function App() {
 
         {/* AI Prompt Bar & Toolbar */}
         <CanvasToolbar
-          isToolbarAiLoading={isToolbarAiLoading || isToolbarIntentPreflight}
+          isToolbarAiLoading={isToolbarAiLoading}
           isInputDisabled={isAnyAiBusy || voiceModeActive}
           aiPrompt={aiPrompt} setAiPrompt={setAiPrompt}
           handleAiSubmit={handleAiSubmit} addTextNode={addTextNode} addThemeNode={addThemeNode} addFileNode={addFileNode}
           agentConfigs={agentConfigs} canvasTransform={canvasTransform}
           setCanvasTransform={setCanvasTransform} transformRef={transformRef}
           activeCanvasId={activeCanvasId}
-          intentClarification={intentClarification}
-          isIntentSubmitting={isToolbarAiLoading}
-          onCancelIntentClarification={cancelIntentClarification}
-          onConfirmIntentClarification={(finalRequest) => void confirmIntentClarification(finalRequest)}
           voiceModeActive={voiceModeActive}
           voicePhase={voicePhase}
           onToggleVoiceMode={toggleVoiceMode}

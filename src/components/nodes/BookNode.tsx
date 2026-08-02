@@ -214,12 +214,12 @@ export function BookNode({
   const runAskAboutSelection = useCallback(() => {
     const quote = askQuoteRef.current;
     if (!quote || !onAskAboutSelection) return;
-    onAskAboutSelection(quote.text, quote.sourceLabel);
+    onAskAboutSelection(quote.text, quote.sourceLabel, node.id);
     askToolbarArmedRef.current = false;
     askQuoteRef.current = null;
     clearAskUi();
     window.getSelection()?.removeAllRanges();
-  }, [onAskAboutSelection, clearAskUi]);
+  }, [onAskAboutSelection, clearAskUi, node.id]);
 
   const runExpandSelection = useCallback(() => {
     const quote = askQuoteRef.current;

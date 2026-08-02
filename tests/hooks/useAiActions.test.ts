@@ -33,14 +33,6 @@ vi.mock('../../src/services/search', () => ({
   buildSearchContext: vi.fn(),
 }));
 
-const analyzeToolbarIntentPreflightMock = vi.hoisted(() =>
-  vi.fn().mockResolvedValue({ ambiguous: false }),
-);
-
-vi.mock('../../src/services/toolbarIntentClarification', () => ({
-  analyzeToolbarIntentPreflight: (...args: unknown[]) => analyzeToolbarIntentPreflightMock(...args),
-}));
-
 import { callUniversalAI } from '../../src/services/ai';
 import { metasoSearch } from '../../src/services/search';
 import i18n from '../../src/i18n';
@@ -112,8 +104,6 @@ describe('useAiActions', () => {
       total: 0,
       webpages: [],
     });
-    analyzeToolbarIntentPreflightMock.mockClear();
-    analyzeToolbarIntentPreflightMock.mockResolvedValue({ ambiguous: false });
   });
 
   // --- handlePublish ---
@@ -177,7 +167,7 @@ describe('useAiActions', () => {
 
       act(() => {
         result.current.setAiPrompt(
-          'Write a long reflective paragraph about episodic memory, aging, and narrative identity so that the toolbar intent gate skips preflight.',
+          'Write a long reflective paragraph about episodic memory, aging, and narrative identity.',
         );
       });
 
@@ -185,7 +175,6 @@ describe('useAiActions', () => {
         await result.current.handleAiSubmit();
       });
 
-      expect(analyzeToolbarIntentPreflightMock).not.toHaveBeenCalled();
       expect(callUniversalAI).toHaveBeenCalledWith(
         expect.objectContaining({
           prompt: expect.stringContaining('episodic memory'),
@@ -200,12 +189,12 @@ describe('useAiActions', () => {
     });
 
     it('无勾选所选节点时不带入便签：prompt 为用户原文且 system 含思维伙伴设定', async () => {
-      const longSkipPreflight =
-        'Write a long reflective paragraph about rivers and deltas so toolbar intent gate skips preflight without question marks.';
+      const prompt =
+        'Write a long reflective paragraph about rivers and deltas.';
       const { result } = renderHook(() => useTestAiActions({ selectedNodes: new Set() }));
 
       act(() => {
-        result.current.setAiPrompt(longSkipPreflight);
+        result.current.setAiPrompt(prompt);
       });
 
       await act(async () => {
@@ -214,15 +203,15 @@ describe('useAiActions', () => {
 
       expect(callUniversalAI).toHaveBeenCalledWith(
         expect.objectContaining({
-          prompt: longSkipPreflight,
+          prompt,
           systemInstruction: expect.stringMatching(/AI thinking partner[\s\S]*not to behave like a chatbot[\s\S]*Never expose the product metaphor[\s\S]*Always reply entirely in English/i),
         }),
       );
     });
 
     it('勾选节点时拼装所选正文，system 将节选作为隐性上下文', async () => {
-      const longSkipPreflight =
-        'Write at length about cloud patterns and precipitation types so toolbar intent gate skips without question marks.';
+      const prompt =
+        'Write at length about cloud patterns and precipitation types.';
       const hook = renderHook(() =>
         useTestAiActions({ selectedNodes: new Set(['n1']), edges: [{ from: 'n1', to: 'x' }] }),
       );
@@ -231,7 +220,7 @@ describe('useAiActions', () => {
         const noteEl = document.createElement('div');
         noteEl.innerText = 'EXCERPT_FROM_SELECTED_NOTE';
         hook.result.current.nodesRef.current['n1'] = noteEl;
-        hook.result.current.setAiPrompt(longSkipPreflight);
+        hook.result.current.setAiPrompt(prompt);
       });
 
       await act(async () => {
@@ -246,7 +235,7 @@ describe('useAiActions', () => {
       );
     });
 
-    it('命中预检闸门时先跑意图分析，无疑义则用原文调主模型', async () => {
+    it('短句带问号也直接调用主模型，不再做意图预检', async () => {
       const { result } = renderHook(() => useTestAiActions());
       act(() => {
         result.current.setAiPrompt('你怎么看？');
@@ -254,13 +243,48 @@ describe('useAiActions', () => {
       await act(async () => {
         await result.current.handleAiSubmit();
       });
-      expect(analyzeToolbarIntentPreflightMock).toHaveBeenCalledTimes(1);
-      expect(analyzeToolbarIntentPreflightMock).toHaveBeenCalledWith(
-        '你怎么看？',
-        expect.objectContaining({ provider: 'gemini' }),
-        expect.any(Function),
-      );
       expect(callUniversalAI).toHaveBeenCalledTimes(1);
+      expect(callUniversalAI).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: '你怎么看？',
+        }),
+      );
+    });
+
+    it('书摘问 AI 时新卡与书籍自动连线', async () => {
+      const book: CanvasNode = {
+        id: 'book-1',
+        canvasId: 'default',
+        type: 'book',
+        content: 'Book title',
+        x: 100,
+        y: 80,
+        width: 380,
+        height: 520,
+      };
+      await db.nodes.add(book);
+
+      const { result } = renderHook(() =>
+        useTestAiActions({ dynamicNodes: [book] }),
+      );
+
+      act(() => {
+        result.current.askAboutSelection('一段引用文字', 'Book title', 'book-1');
+        result.current.setAiPrompt('这段在说什么？');
+      });
+
+      await act(async () => {
+        await result.current.handleAiSubmit();
+      });
+
+      const aiNodes = (await db.nodes.toArray()).filter((n) => n.type === 'ai');
+      expect(aiNodes).toHaveLength(1);
+      const edges = await db.edges.toArray();
+      expect(edges).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ from: 'book-1', to: aiNodes[0]!.id }),
+        ]),
+      );
     });
 
     it('AI 失败时不创建节点', async () => {

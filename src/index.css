@@ -102,38 +102,6 @@
     );
   }
 
-  /* Canvas toolbar intent checklist — frosted float above input */
-  .intent-clarify-glass {
-    -webkit-backdrop-filter: blur(18px) saturate(1.45);
-    backdrop-filter: blur(18px) saturate(1.45);
-    background: color-mix(in srgb, #faf9f6 28%, rgba(255, 255, 255, 0.48));
-    border: 1px solid color-mix(in srgb, #e6e4df 42%, rgba(255, 255, 255, 0.75));
-    box-shadow:
-      0 8px 32px rgba(26, 26, 26, 0.07),
-      0 2px 8px rgba(26, 26, 26, 0.04),
-      inset 0 1px 0 rgba(255, 255, 255, 0.72);
-  }
-
-  .intent-clarify-glass-wash {
-    background: linear-gradient(
-      165deg,
-      rgba(255, 255, 255, 0.55) 0%,
-      rgba(255, 247, 237, 0.22) 38%,
-      transparent 72%
-    );
-    opacity: 0.9;
-    mix-blend-mode: overlay;
-  }
-
-  .intent-clarify-glass-hotspot {
-    background: radial-gradient(
-      ellipse 80% 60% at 12% 0%,
-      rgba(255, 255, 255, 0.65),
-      transparent 68%
-    );
-    opacity: 0.85;
-  }
-
   .note-receipt-paper {
     background-color: var(--note-paper) !important;
   }

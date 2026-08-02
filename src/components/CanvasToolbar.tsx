@@ -16,7 +16,6 @@ import { db } from '../db';
 import { getCanvasCenterPosition } from '../utils/canvas';
 import { resolveAgentLocalizedName } from '../utils/aiI18n';
 import type { VoicePhase } from '../hooks/useVoiceWritingMode';
-import { IntentClarificationModal } from './IntentClarificationModal';
 import { AgentIcon } from './AgentIcon';
 import {
   CANVAS_TOOLBAR_COLLAPSED_SIZE,
@@ -44,14 +43,6 @@ export interface CanvasToolbarProps {
   setCanvasTransform: React.Dispatch<React.SetStateAction<{ x: number; y: number; scale: number }>>;
   transformRef: React.MutableRefObject<{ x: number; y: number; scale: number }>;
   activeCanvasId: string;
-  intentClarification: {
-    original: string;
-    options: [string, string, string];
-    hint?: string;
-  } | null;
-  isIntentSubmitting: boolean;
-  onCancelIntentClarification: () => void;
-  onConfirmIntentClarification: (finalRequest: string) => void;
   voiceModeActive?: boolean;
   voicePhase?: VoicePhase;
   onToggleVoiceMode?: () => void;
@@ -85,10 +76,6 @@ export function CanvasToolbar({
   setCanvasTransform,
   transformRef,
   activeCanvasId,
-  intentClarification,
-  isIntentSubmitting,
-  onCancelIntentClarification,
-  onConfirmIntentClarification,
   voiceModeActive = false,
   voicePhase = 'idle',
   onToggleVoiceMode,
@@ -189,10 +176,10 @@ export function CanvasToolbar({
   // Auto-expand when voice / intent / book quote needs the full bar.
   useEffect(() => {
     if (!collapsed) return;
-    if (voiceModeActive || intentClarification || pendingQuote?.text) {
+    if (voiceModeActive || pendingQuote?.text) {
       expandToolbar();
     }
-  }, [collapsed, voiceModeActive, intentClarification, pendingQuote?.text, expandToolbar]);
+  }, [collapsed, voiceModeActive, pendingQuote?.text, expandToolbar]);
 
   const toggleOrientation = useCallback(() => {
     if (collapsed) return;
@@ -341,16 +328,6 @@ export function CanvasToolbar({
         }}
         data-no-drag=""
       >
-        <IntentClarificationModal
-          open={intentClarification !== null}
-          original={intentClarification?.original ?? ''}
-          options={intentClarification?.options ?? ['', '', '']}
-          hint={intentClarification?.hint}
-          isSubmitting={isIntentSubmitting}
-          onCancel={onCancelIntentClarification}
-          onConfirm={onConfirmIntentClarification}
-        />
-
         {collapsed ? (
           <button
             type="button"
@@ -376,7 +353,7 @@ export function CanvasToolbar({
           </button>
         ) : (
           <div className={`relative ${isVertical ? 'w-56' : 'w-full'}`}>
-            {/* Float above the input so appearing chips don't push the bar off-screen. */}
+            {/* Float above the input so overlays don't push the bar off-screen. */}
             {(voiceModeActive || pendingQuote?.text) && (
               <div className="absolute bottom-full left-0 right-0 mb-2 flex flex-col gap-2 pointer-events-auto">
                 {voiceModeActive && (

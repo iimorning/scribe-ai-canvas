@@ -27,7 +27,7 @@ interface NodeRendererProps {
   webSearchSourcesCollapsed?: boolean;
   onToggleWebSearchSources?: (nodeId: string) => void;
   ttsHighlightSentence?: string | null;
-  onAskAboutBookSelection?: (quote: string, sourceLabel?: string) => void;
+  onAskAboutBookSelection?: (quote: string, sourceLabel?: string, sourceNodeId?: string) => void;
   onExpandBookSelection?: (quote: string, sourceLabel?: string) => void;
   expandingBookNodeId?: string | null;
   bookExpandBranchCount?: number;

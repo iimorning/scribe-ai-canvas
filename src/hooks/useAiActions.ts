@@ -14,9 +14,7 @@ import {
   spawnWebSearchCardsFromPages,
 } from '../services/spawnWebSearchNoteCards';
 import { parseThreadWebSearchIntent, type WebSearchKind } from '../utils/webSearchCommand';
-import { shouldPreflightToolbarIntent } from '../utils/toolbarIntentGate';
-import { analyzeToolbarIntentPreflight } from '../services/toolbarIntentClarification';
-import { getCanvasCenterPosition } from '../utils/canvas';
+import { findOpenCanvasPosition, NEW_AI_NODE_SIZE } from '../utils/canvas';
 import { buildAgentSystemInstruction, combineSystemParts, getLocaleDirective } from '../utils/aiI18n';
 import { collectAiThreadChain, formatAgentThreadDialogueHistory } from '../utils/agentThreadContext';
 import {
@@ -81,15 +79,13 @@ export function useAiActions({
   const [streamingAiNodeId, setStreamingAiNodeId] = useState<string | null>(null);
   const [aiPrompt, setAiPrompt] = useState('');
   /** Passage quoted from a book node (“Ask AI” on selection). */
-  const [pendingQuote, setPendingQuote] = useState<{ text: string; sourceLabel?: string } | null>(null);
+  const [pendingQuote, setPendingQuote] = useState<{
+    text: string;
+    sourceLabel?: string;
+    sourceNodeId?: string;
+  } | null>(null);
   const [expandingBookNodeId, setExpandingBookNodeId] = useState<string | null>(null);
   const [searchingNoteNodeId, setSearchingNoteNodeId] = useState<string | null>(null);
-  const [intentClarification, setIntentClarification] = useState<{
-    original: string;
-    options: [string, string, string];
-    hint?: string;
-  } | null>(null);
-  const [isToolbarIntentPreflight, setIsToolbarIntentPreflight] = useState(false);
   const followUpGuardRef = useRef(false);
   const expandGuardRef = useRef(false);
   const noteSearchGuardRef = useRef(false);
@@ -102,13 +98,11 @@ export function useAiActions({
   const isAnyAiBusy =
     isPublishing ||
     isToolbarAiLoading ||
-    isToolbarIntentPreflight ||
     analyzingAgentNodeId !== null ||
     followUpParentId !== null ||
     streamingAiNodeId !== null ||
     expandingBookNodeId !== null ||
-    searchingNoteNodeId !== null ||
-    intentClarification !== null;
+    searchingNoteNodeId !== null;
 
   const handlePublish = async () => {
     if (selectedNodes.size === 0 || isAnyAiBusy) return;
@@ -230,10 +224,14 @@ export function useAiActions({
     }
   };
 
-  const askAboutSelection = (quote: string, sourceLabel?: string) => {
+  const askAboutSelection = (quote: string, sourceLabel?: string, sourceNodeId?: string) => {
     const text = quote.replace(/\s+/g, ' ').trim();
     if (!text) return;
-    setPendingQuote({ text, sourceLabel: sourceLabel?.trim() || undefined });
+    setPendingQuote({
+      text,
+      sourceLabel: sourceLabel?.trim() || undefined,
+      sourceNodeId: sourceNodeId?.trim() || undefined,
+    });
   };
 
   const clearPendingQuote = () => setPendingQuote(null);
@@ -383,7 +381,15 @@ export function useAiActions({
   };
 
   const runToolbarAiGeneration = async (request: string) => {
-    const { x, y } = getCanvasCenterPosition(transformRef.current);
+    const preferBeside = pendingQuote?.sourceNodeId
+      ? dynamicNodes.find((n) => n.id === pendingQuote.sourceNodeId) ?? null
+      : null;
+    const { x, y } = findOpenCanvasPosition({
+      transform: transformRef.current,
+      obstacles: dynamicNodes,
+      size: NEW_AI_NODE_SIZE,
+      preferBeside,
+    });
     const newNodeId = crypto.randomUUID();
     await db.nodes.add({
       id: newNodeId,
@@ -393,6 +399,18 @@ export function useAiActions({
       x,
       y,
     });
+
+    // Link the reply card back to its book (or other source) when Ask AI was used on a selection.
+    const linkFromId = pendingQuote?.sourceNodeId;
+    if (linkFromId && dynamicNodes.some((n) => n.id === linkFromId)) {
+      await db.edges.add({
+        id: crypto.randomUUID(),
+        canvasId: activeCanvasId,
+        from: linkFromId,
+        to: newNodeId,
+      });
+    }
+
     setStreamingAiNodeId(newNodeId);
 
     try {
@@ -462,72 +480,19 @@ export function useAiActions({
       !raw ||
       isPublishing ||
       isToolbarAiLoading ||
-      isToolbarIntentPreflight ||
       analyzingAgentNodeId !== null ||
       followUpParentId !== null ||
-      streamingAiNodeId !== null ||
-      intentClarification !== null
+      streamingAiNodeId !== null
     ) {
       return;
     }
 
-    const runWithLoading = async (request: string) => {
-      setIsToolbarAiLoading(true);
-      try {
-        await runToolbarAiGeneration(request);
-      } catch (error) {
-        const msg = formatAiError(error);
-        console.error('[Spoor] handleAiSubmit failed', { error: msg, provider: aiConfig.provider, model: aiConfig.model, apiKey: maskApiKeyForLog(aiConfig.apiKey) });
-        void appAlert({
-          message: formatAiFailureAlertMessage(msg, aiConfig.provider),
-        });
-      } finally {
-        setIsToolbarAiLoading(false);
-      }
-    };
-
-    if (!shouldPreflightToolbarIntent(raw)) {
-      await runWithLoading(raw);
-      return;
-    }
-
-    setIsToolbarIntentPreflight(true);
-    let proceedWithOriginal = false;
-    try {
-      const analysis = await analyzeToolbarIntentPreflight(raw, aiConfig, t);
-      if (analysis.ambiguous) {
-        setIntentClarification({
-          original: raw,
-          options: analysis.options,
-          hint: analysis.hint,
-        });
-      } else {
-        proceedWithOriginal = true;
-      }
-    } catch (e) {
-      const msg = formatAiError(e);
-      console.error('[Spoor] toolbar intent preflight failed', msg);
-      proceedWithOriginal = true;
-    } finally {
-      setIsToolbarIntentPreflight(false);
-    }
-
-    if (proceedWithOriginal) {
-      await runWithLoading(raw);
-    }
-  };
-
-  const cancelIntentClarification = () => setIntentClarification(null);
-
-  const confirmIntentClarification = async (finalRequest: string) => {
-    if (!intentClarification) return;
-    setIntentClarification(null);
     setIsToolbarAiLoading(true);
     try {
-      await runToolbarAiGeneration(finalRequest);
+      await runToolbarAiGeneration(raw);
     } catch (error) {
       const msg = formatAiError(error);
-      console.error('[Spoor] handleAiSubmit after intent clarify failed', { error: msg, provider: aiConfig.provider, model: aiConfig.model, apiKey: maskApiKeyForLog(aiConfig.apiKey) });
+      console.error('[Spoor] handleAiSubmit failed', { error: msg, provider: aiConfig.provider, model: aiConfig.model, apiKey: maskApiKeyForLog(aiConfig.apiKey) });
       void appAlert({
         message: formatAiFailureAlertMessage(msg, aiConfig.provider),
       });
@@ -825,9 +790,5 @@ export function useAiActions({
     triggerAgentAnalysis,
     handleAiSubmit,
     submitAiThreadFollowUp,
-    intentClarification,
-    isToolbarIntentPreflight,
-    cancelIntentClarification,
-    confirmIntentClarification,
   };
 }

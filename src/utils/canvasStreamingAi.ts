@@ -45,7 +45,7 @@ export async function runCanvasStreamingAiCall({
     const trimmed = cleaned.trim();
     if (!trimmed) {
       writer.cancel();
-      await db.nodes.delete(nodeId);
+      await deleteCanvasNodeAndEdges(nodeId);
       return '';
     }
     await db.nodes.update(nodeId, { content: cleaned });
@@ -53,10 +53,20 @@ export async function runCanvasStreamingAiCall({
   } catch (e) {
     writer.cancel();
     try {
-      await db.nodes.delete(nodeId);
+      await deleteCanvasNodeAndEdges(nodeId);
     } catch {
       /* node may already be gone */
     }
     throw e;
   }
+}
+
+async function deleteCanvasNodeAndEdges(nodeId: string): Promise<void> {
+  const related = await db.edges
+    .filter((e) => e.from === nodeId || e.to === nodeId)
+    .toArray();
+  if (related.length > 0) {
+    await db.edges.bulkDelete(related.map((e) => e.id));
+  }
+  await db.nodes.delete(nodeId);
 }

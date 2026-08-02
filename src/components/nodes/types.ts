@@ -44,7 +44,7 @@ export interface AiNodeProps extends NodeContentProps {
 
 export interface BookNodeProps extends NodeContentProps {
   /** Quote selected text into the toolbar AI context. */
-  onAskAboutSelection?: (quote: string, sourceLabel?: string) => void;
+  onAskAboutSelection?: (quote: string, sourceLabel?: string, sourceNodeId?: string) => void;
   /** Expand selected text into a theme hub + linked note cards. */
   onExpandSelection?: (quote: string, sourceLabel?: string) => void;
   isExpanding?: boolean;

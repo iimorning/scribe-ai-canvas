@@ -4,7 +4,11 @@ let maxZIndex = 10;
 
 export function useDraggable(initialX: number, initialY: number, scale: number = 1, onDragEnd?: (pos: {x: number, y: number}) => void) {
   const [pos, setPos] = useState({ x: initialX, y: initialY });
-  const [zIndex, setZIndex] = useState(maxZIndex);
+  // Claim a fresh top z so newly spawned cards aren't trapped under an already-dragged node.
+  const [zIndex, setZIndex] = useState(() => {
+    maxZIndex += 1;
+    return maxZIndex;
+  });
   const scaleRef = useRef(scale);
   const posRef = useRef(pos);
   const draggingRef = useRef(false);
