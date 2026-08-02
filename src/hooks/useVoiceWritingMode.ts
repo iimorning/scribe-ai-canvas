@@ -18,7 +18,7 @@ import { runCanvasStreamingAiCall } from '../utils/canvasStreamingAi';
 import { combineSystemParts, getLocaleDirective } from '../utils/aiI18n';
 import { createTtsSentenceQueue } from '../utils/ttsSentenceQueue';
 import { voiceAiPosition, voiceUserPosition, transformToFocusNode } from '../utils/voiceNoteLayout';
-import { parseThreadWebSearchIntent } from '../utils/webSearchCommand';
+import { parseVoiceWebSearchIntent } from '../utils/webSearchCommand';
 import type { CanvasTransform } from './useCanvasInteraction';
 
 export type VoicePhase = 'idle' | 'listening' | 'thinking' | 'speaking';
@@ -302,7 +302,7 @@ export function useVoiceWritingMode({
       let replyText = '';
       try {
         let aiPrompt = userText;
-        const searchIntent = parseThreadWebSearchIntent(userText);
+        const searchIntent = parseVoiceWebSearchIntent(userText);
         if (searchIntent) {
           const searchKey = (aiConfig.metasoApiKey || '').trim();
           const query = searchIntent.explicitQuery;

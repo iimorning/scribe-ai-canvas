@@ -410,7 +410,11 @@ export function useAiActions({
           from: parentNodeId,
           to: newNodeId,
         });
-        await spawnWebSearchCardsFromPages(newNodeId, { x: parent.x, y: childY }, pages, activeCanvasId);
+        await spawnWebSearchCardsFromPages(newNodeId, { x: parent.x, y: childY }, pages, activeCanvasId, {
+          // Center the source lane on the new answer card; fall back to measured parent height
+          // when the fresh node has not laid out yet.
+          anchorHeight: h,
+        });
         await db.nodes.update(parentNodeId, { followUpSent: true });
       } catch (e) {
         const msg = formatAiError(e);
