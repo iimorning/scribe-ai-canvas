@@ -19,7 +19,6 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, opts?: Record<string, unknown>) => {
       const translations: Record<string, string> = {
-        'sidebar.nav_heading': '导航',
         'sidebar.personal': '画布',
         'sidebar.reference': '长文',
         'sidebar.lab': '研究',
@@ -227,9 +226,10 @@ describe('App 组件', () => {
       await act(async () => {
         render(<App />);
       });
-      // 侧边栏导航链接应存在
+      // 侧边栏导航链接应存在（无「导航」分区标题）
       const nav = document.querySelector('nav');
-      expect(nav?.textContent).toContain('导航');
+      expect(nav).toBeTruthy();
+      expect(nav?.textContent).not.toContain('导航');
       const links = getNavLinks();
       const linkTexts = links.map(a => a.textContent?.trim());
       expect(linkTexts).toContain('画布');
@@ -1243,11 +1243,11 @@ describe('App 组件', () => {
       const toggleBtn = aside.querySelector('div.mt-auto button:first-child')!;
 
       // 初始状态侧边栏是展开的
-      expect(aside).toHaveClass('w-48');
+      expect(aside).toHaveClass('w-36');
 
       // 点击折叠
       await user.click(toggleBtn);
-      expect(aside).toHaveClass('w-20');
+      expect(aside).toHaveClass('w-16');
     });
   });
 });

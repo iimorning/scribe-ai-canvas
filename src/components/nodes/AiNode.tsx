@@ -225,7 +225,7 @@ export function AiNode({
               disabled={!!isFollowUpDisabled || !draft.trim()}
               title={t('nodes.ai_follow_up_send')}
               aria-label={t('nodes.ai_follow_up_send')}
-              className="absolute bottom-1 right-1.5 flex items-center justify-center rounded-md p-1 text-[#C2410C] transition-colors hover:bg-[#EAE7E2]/80 hover:text-[#a33508] disabled:pointer-events-none disabled:opacity-40"
+              className="absolute top-1/2 right-1.5 -translate-y-1/2 flex items-center justify-center rounded-md p-1 text-[#C2410C] transition-colors hover:bg-[#EAE7E2]/80 hover:text-[#a33508] disabled:pointer-events-none disabled:opacity-40"
             >
               {isFollowUpLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />

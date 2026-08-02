@@ -17,11 +17,10 @@ const resources = {
         "description": "Spatial Thinking & Knowledge Synthesis"
       },
       "sidebar": {
-        "nav_heading": "Modules",
         "personal": "Canvas",
-        "reference": "Long-form",
-        "lab": "Research",
-        "agents": "Personas",
+        "reference": "Essays",
+        "lab": "Lab",
+        "agents": "Agents",
         "search_placeholder": "Search memories...",
         "new_note": "New Note",
         "new_theme_card": "New Theme Card",
@@ -86,7 +85,7 @@ const resources = {
         "ai_streaming": "Generating…",
         "empty_note": "Empty note. Click to edit.",
         "type_something": "Type something...",
-        "ai_follow_up_placeholder": "Ask a follow-up. Type \"web search\" to fetch sources (Enter to send, Shift+Enter for newline)…",
+        "ai_follow_up_placeholder": "Ask a follow-up",
         "ai_follow_up_send": "Send",
         "agent_run_analysis": "Run analysis on linked notes",
         "agent_no_context": "Link a note that has content to this agent (use the + button), then run analysis.",
@@ -379,7 +378,6 @@ const resources = {
         "description": "空间思维与知识合成"
       },
       "sidebar": {
-        "nav_heading": "导航",
         "personal": "画布",
         "reference": "长文",
         "lab": "研究",
@@ -448,7 +446,7 @@ const resources = {
         "ai_streaming": "生成中…",
         "empty_note": "空笔记。点击编辑。",
         "type_something": "输入内容...",
-        "ai_follow_up_placeholder": "继续追问…（可输入「联网搜索」检索资料；Enter 发送，Shift+Enter 换行）",
+        "ai_follow_up_placeholder": "继续追问",
         "ai_follow_up_send": "发送",
         "agent_run_analysis": "开始分析已连接的笔记",
         "agent_no_context": "请先用右侧「+」将含有内容的笔记连到该智能体，再点此开始分析。",
