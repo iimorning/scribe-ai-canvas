@@ -167,24 +167,18 @@ export function BookNode({
   pageCountRef.current = unitCount;
   const chapterFlipLockUntilRef = useRef(0);
 
-  // Full-viewport in-page jumps; at top/bottom, wheel flips to prev/next chapter.
+  // Full-viewport in-page jumps; at top/bottom, wheel/arrow flips to prev/next chapter.
   useEffect(() => {
     const el = bodyRef.current;
     if (!el) return;
 
-    const onWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) return;
-      if (e.deltaY === 0) return;
-
-      const now = performance.now();
-      const direction: 1 | -1 = e.deltaY > 0 ? 1 : -1;
+    const stepPage = (direction: 1 | -1, now: number) => {
       const nextTop = nextBookReaderScrollTop({
         scrollTop: el.scrollTop,
         clientHeight: el.clientHeight,
         scrollHeight: el.scrollHeight,
         direction,
       });
-      // Subpixel: treat tiny differences as "can't scroll further".
       const canScrollFurther = Math.abs(nextTop - el.scrollTop) > 0.5;
 
       const tryChapterFlip = (): boolean => {
@@ -195,48 +189,53 @@ export function BookNode({
           pageCount: pageCountRef.current,
         });
         if (!flip) return false;
-        // Separate lock so in-page lock doesn't swallow the notch that should change chapters.
-        if (now < chapterFlipLockUntilRef.current) {
-          return true; // consumed (ignore duplicate flips)
-        }
+        if (now < chapterFlipLockUntilRef.current) return true;
         chapterFlipLockUntilRef.current = now + BOOK_READER_PAGE_LOCK_MS;
         pageScrollLockUntilRef.current = now + BOOK_READER_PAGE_LOCK_MS;
-        if (flip === 'next') {
-          goToPageRef.current(pageIndexRef.current + 1, 'start');
-        } else {
-          goToPageRef.current(pageIndexRef.current - 1, 'end');
-        }
+        if (flip === 'next') goToPageRef.current(pageIndexRef.current + 1, 'start');
+        else goToPageRef.current(pageIndexRef.current - 1, 'end');
         return true;
       };
 
-      // While in-page lock is active, still allow chapter flip at the edge.
       if (now < pageScrollLockUntilRef.current) {
-        if (tryChapterFlip()) {
-          e.preventDefault();
-          e.stopPropagation();
-          return;
-        }
-        e.preventDefault();
-        e.stopPropagation();
+        tryChapterFlip();
         return;
       }
-
       if (canScrollFurther) {
-        e.preventDefault();
-        e.stopPropagation();
         pageScrollLockUntilRef.current = now + BOOK_READER_PAGE_LOCK_MS;
         el.scrollTop = nextTop;
         return;
       }
+      tryChapterFlip();
+    };
 
-      if (tryChapterFlip()) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) return;
+      if (e.deltaY === 0) return;
+      const direction: 1 | -1 = e.deltaY > 0 ? 1 : -1;
+      stepPage(direction, performance.now());
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.shiftKey) return; // shift+arrow = native text selection
+      let direction: 1 | -1 | null = null;
+      if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') direction = 1;
+      else if (e.key === 'ArrowUp' || e.key === 'PageUp') direction = -1;
+      if (direction === null) return;
+      e.preventDefault();
+      e.stopPropagation();
+      stepPage(direction, performance.now());
     };
 
     el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
+    el.addEventListener('keydown', onKeyDown);
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('keydown', onKeyDown);
+    };
     // unitCount: bodyRef only mounts once parsed book units exist.
   }, [node.id, unitCount]);
 
@@ -394,7 +393,8 @@ export function BookNode({
         <div
           ref={bodyRef}
           data-no-drag=""
-          className={`h-full overflow-y-auto min-h-0 pr-1 custom-scrollbar text-sm font-serif leading-relaxed text-[#4a4a44] select-text cursor-text${
+          tabIndex={-1}
+          className={`h-full overflow-y-auto min-h-0 pr-1 custom-scrollbar text-sm font-serif leading-relaxed text-[#4a4a44] select-text cursor-text focus:outline-none${
             unit?.blocks?.length ? '' : ' whitespace-pre-wrap'
           }`}
           {...{ [CANVAS_NODE_CONTEXT_TEXT_ATTR]: '' }}
