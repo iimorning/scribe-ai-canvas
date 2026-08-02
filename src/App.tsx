@@ -46,6 +46,7 @@ import {
   parseCanvasClipboardPayload,
   snapshotNodesAndTouchingEdges,
 } from './utils/canvasClipboard';
+import { shouldDeferToNativeClipboard } from './utils/noteClipboard';
 import { applyCanvasUndo, createCanvasUndoStack } from './utils/canvasUndoStack';
 import {
   listWebSearchSourcesForParent,
@@ -353,12 +354,13 @@ export default function App() {
     };
 
     const onCopy = (e: ClipboardEvent) => {
-      if (isTextEditingTarget(e.target)) return;
+      // Book bodies use select-text (not contenteditable); don't steal Ctrl+C for card JSON.
+      if (shouldDeferToNativeClipboard(e.target)) return;
       writeClipboard(e);
     };
 
     const onCut = (e: ClipboardEvent) => {
-      if (isTextEditingTarget(e.target)) return;
+      if (shouldDeferToNativeClipboard(e.target)) return;
       if (!writeClipboard(e)) return;
       const picked = resolveTargetNodes();
       const ids = picked.map((n) => n.id);

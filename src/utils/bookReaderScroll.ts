@@ -40,3 +40,24 @@ export function nextBookReaderScrollTop(options: {
   const next = options.scrollTop + options.direction * step;
   return Math.min(maxScroll, Math.max(0, next));
 }
+
+/** Large sentinel restored via scrollTop (browser clamps to max). */
+export const BOOK_READER_SCROLL_END_SENTINEL = 1_000_000_000;
+
+/**
+ * When in-page scroll cannot move further in `direction`, decide whether wheel
+ * should flip chapters. Prefer `canScrollFurther` from comparing nextTop vs scrollTop
+ * (more reliable than pixel epsilon at subpixel edges).
+ */
+export function bookChapterFlipFromWheel(options: {
+  canScrollFurther: boolean;
+  direction: 1 | -1;
+  pageIndex: number;
+  pageCount: number;
+}): 'next' | 'prev' | null {
+  const { canScrollFurther, direction, pageIndex, pageCount } = options;
+  if (canScrollFurther || pageCount <= 1) return null;
+  if (direction > 0 && pageIndex < pageCount - 1) return 'next';
+  if (direction < 0 && pageIndex > 0) return 'prev';
+  return null;
+}

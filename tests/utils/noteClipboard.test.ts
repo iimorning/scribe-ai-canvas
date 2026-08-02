@@ -4,7 +4,9 @@ import {
   parseStickyClipboardPayload,
   stickyPastePosition,
   STICKY_CLIPBOARD_KIND,
+  hasNonEmptyTextSelection,
   isTextEditingTarget,
+  shouldDeferToNativeClipboard,
 } from '../../src/utils/noteClipboard';
 import type { CanvasNode } from '../../src/db';
 
@@ -46,5 +48,25 @@ describe('noteClipboard', () => {
     el.setAttribute('contenteditable', 'true');
     expect(isTextEditingTarget(el)).toBe(true);
     expect(isTextEditingTarget(document.createElement('button'))).toBe(false);
+  });
+
+  it('hasNonEmptyTextSelection / shouldDeferToNativeClipboard 在划选正文时放行系统复制', () => {
+    const host = document.createElement('div');
+    host.textContent = '一段书籍正文';
+    document.body.appendChild(host);
+    const range = document.createRange();
+    range.selectNodeContents(host);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+
+    expect(hasNonEmptyTextSelection()).toBe(true);
+    expect(shouldDeferToNativeClipboard(host)).toBe(true);
+    expect(isTextEditingTarget(host)).toBe(false);
+
+    sel?.removeAllRanges();
+    document.body.removeChild(host);
+    expect(hasNonEmptyTextSelection()).toBe(false);
+    expect(shouldDeferToNativeClipboard(document.createElement('div'))).toBe(false);
   });
 });

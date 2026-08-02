@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  bookChapterFlipFromWheel,
   bookReaderScrollStep,
   isDiscreteReaderWheel,
   nextBookReaderScrollTop,
@@ -69,5 +70,59 @@ describe('bookReaderScrollStep / nextBookReaderScrollTop', () => {
         direction: -1,
       }),
     ).toBe(0);
+  });
+});
+
+describe('bookChapterFlipFromWheel', () => {
+  it('页内无法再滚且向下 → 下一章', () => {
+    expect(
+      bookChapterFlipFromWheel({
+        canScrollFurther: false,
+        direction: 1,
+        pageIndex: 0,
+        pageCount: 3,
+      }),
+    ).toBe('next');
+  });
+
+  it('页内无法再滚且向上 → 上一章', () => {
+    expect(
+      bookChapterFlipFromWheel({
+        canScrollFurther: false,
+        direction: -1,
+        pageIndex: 2,
+        pageCount: 3,
+      }),
+    ).toBe('prev');
+  });
+
+  it('页内还能继续滚时不翻章', () => {
+    expect(
+      bookChapterFlipFromWheel({
+        canScrollFurther: true,
+        direction: 1,
+        pageIndex: 0,
+        pageCount: 3,
+      }),
+    ).toBeNull();
+  });
+
+  it('已在首末章边界时不再翻章', () => {
+    expect(
+      bookChapterFlipFromWheel({
+        canScrollFurther: false,
+        direction: 1,
+        pageIndex: 2,
+        pageCount: 3,
+      }),
+    ).toBeNull();
+    expect(
+      bookChapterFlipFromWheel({
+        canScrollFurther: false,
+        direction: -1,
+        pageIndex: 0,
+        pageCount: 3,
+      }),
+    ).toBeNull();
   });
 });

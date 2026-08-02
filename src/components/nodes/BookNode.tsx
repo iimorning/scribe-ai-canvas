@@ -8,6 +8,8 @@ import type { BookContentBlock } from '../../utils/bookPayload';
 import { tryParseBookContent } from '../../utils/bookPayload';
 import {
   BOOK_READER_PAGE_LOCK_MS,
+  BOOK_READER_SCROLL_END_SENTINEL,
+  bookChapterFlipFromWheel,
   nextBookReaderScrollTop,
 } from '../../utils/bookReaderScroll';
 
@@ -130,42 +132,6 @@ export function BookNode({
     };
   }, []);
 
-  // Full-viewport page jumps on every wheel notch/gesture (no already-read overlap).
-  useEffect(() => {
-    const el = bodyRef.current;
-    if (!el) return;
-
-    const onWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) return;
-      if (e.deltaY === 0) return;
-
-      const now = performance.now();
-      if (now < pageScrollLockUntilRef.current) {
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
-
-      const direction: 1 | -1 = e.deltaY > 0 ? 1 : -1;
-      const nextTop = nextBookReaderScrollTop({
-        scrollTop: el.scrollTop,
-        clientHeight: el.clientHeight,
-        scrollHeight: el.scrollHeight,
-        direction,
-      });
-      if (nextTop === el.scrollTop) return;
-
-      e.preventDefault();
-      e.stopPropagation();
-      pageScrollLockUntilRef.current = now + BOOK_READER_PAGE_LOCK_MS;
-      el.scrollTop = nextTop;
-    };
-
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-    // unitCount: bodyRef only mounts once parsed book units exist.
-  }, [safeIndex, node.id, unitCount]);
-
   const clearAskUi = useCallback(() => setAskUi(null), []);
 
   const persistScrollTop = useCallback(
@@ -180,14 +146,98 @@ export function BookNode({
   );
 
   const goToPage = useCallback(
-    (next: number) => {
+    (next: number, scroll: 'start' | 'end' = 'start') => {
       const clamped = clampPageIndex(next, unitCount);
       clearAskUi();
       if (clamped === safeIndex) return;
-      void db.nodes.update(node.id, { bookPageIndex: clamped, bookScrollTop: 0 });
+      void db.nodes.update(node.id, {
+        bookPageIndex: clamped,
+        bookScrollTop: scroll === 'end' ? BOOK_READER_SCROLL_END_SENTINEL : 0,
+      });
     },
     [unitCount, clearAskUi, safeIndex, node.id],
   );
+
+  const goToPageRef = useRef(goToPage);
+  goToPageRef.current = goToPage;
+  const pageIndexRef = useRef(safeIndex);
+  pageIndexRef.current = safeIndex;
+  const pageCountRef = useRef(unitCount);
+  pageCountRef.current = unitCount;
+  const chapterFlipLockUntilRef = useRef(0);
+
+  // Full-viewport in-page jumps; at top/bottom, wheel flips to prev/next chapter.
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) return;
+      if (e.deltaY === 0) return;
+
+      const now = performance.now();
+      const direction: 1 | -1 = e.deltaY > 0 ? 1 : -1;
+      const nextTop = nextBookReaderScrollTop({
+        scrollTop: el.scrollTop,
+        clientHeight: el.clientHeight,
+        scrollHeight: el.scrollHeight,
+        direction,
+      });
+      // Subpixel: treat tiny differences as "can't scroll further".
+      const canScrollFurther = Math.abs(nextTop - el.scrollTop) > 0.5;
+
+      const tryChapterFlip = (): boolean => {
+        const flip = bookChapterFlipFromWheel({
+          canScrollFurther,
+          direction,
+          pageIndex: pageIndexRef.current,
+          pageCount: pageCountRef.current,
+        });
+        if (!flip) return false;
+        // Separate lock so in-page lock doesn't swallow the notch that should change chapters.
+        if (now < chapterFlipLockUntilRef.current) {
+          return true; // consumed (ignore duplicate flips)
+        }
+        chapterFlipLockUntilRef.current = now + BOOK_READER_PAGE_LOCK_MS;
+        pageScrollLockUntilRef.current = now + BOOK_READER_PAGE_LOCK_MS;
+        if (flip === 'next') {
+          goToPageRef.current(pageIndexRef.current + 1, 'start');
+        } else {
+          goToPageRef.current(pageIndexRef.current - 1, 'end');
+        }
+        return true;
+      };
+
+      // While in-page lock is active, still allow chapter flip at the edge.
+      if (now < pageScrollLockUntilRef.current) {
+        if (tryChapterFlip()) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
+      if (canScrollFurther) {
+        e.preventDefault();
+        e.stopPropagation();
+        pageScrollLockUntilRef.current = now + BOOK_READER_PAGE_LOCK_MS;
+        el.scrollTop = nextTop;
+        return;
+      }
+
+      if (tryChapterFlip()) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+    // unitCount: bodyRef only mounts once parsed book units exist.
+  }, [node.id, unitCount]);
 
   const askToolbarRef = useRef<HTMLDivElement>(null);
   /** True while pointer is down on the ask/expand bar (selection often clears on press). */

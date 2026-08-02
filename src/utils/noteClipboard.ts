@@ -32,6 +32,21 @@ export function isTextEditingTarget(target: EventTarget | null): boolean {
   return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
 }
 
+/** True when the user has highlighted copyable text (e.g. book body, which is not contenteditable). */
+export function hasNonEmptyTextSelection(): boolean {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return false;
+  return sel.toString().trim().length > 0;
+}
+
+/**
+ * When true, canvas copy/cut/paste shortcuts must not steal the event
+ * (inputs, contenteditable, or a non-empty DOM text selection).
+ */
+export function shouldDeferToNativeClipboard(target: EventTarget | null): boolean {
+  return isTextEditingTarget(target) || hasNonEmptyTextSelection();
+}
+
 export function buildStickyClipboardPayload(nodes: CanvasNode[]): StickyClipboardPayloadV1 | null {
   const stickies = nodes.filter((n) => isStickyNoteType(n.type));
   if (stickies.length === 0) return null;
