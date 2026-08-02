@@ -40,11 +40,13 @@ import { useAppDialog } from './components/AppDialogProvider';
 import { processFileToNode } from './utils/file';
 import { dataTransferHasFiles, preventDefaultIfFileDrag } from './utils/dnd';
 import {
-  buildStickyClipboardPayload,
+  buildCanvasClipboardPayload,
   isTextEditingTarget,
-  parseStickyClipboardPayload,
-  stickyPastePosition,
-} from './utils/noteClipboard';
+  materializeCanvasPaste,
+  parseCanvasClipboardPayload,
+  snapshotNodesAndTouchingEdges,
+} from './utils/canvasClipboard';
+import { applyCanvasUndo, createCanvasUndoStack } from './utils/canvasUndoStack';
 import {
   listWebSearchSourcesForParent,
   setWebSearchSourcesCollapsed,
@@ -258,65 +260,11 @@ export default function App() {
   useEffect(() => registerCanvasUnloadFlush(), []);
 
   const lastStickyClickIdRef = useRef<string | null>(null);
+  const canvasUndoStackRef = useRef(createCanvasUndoStack());
   useEffect(() => {
     lastStickyClickIdRef.current = null;
+    canvasUndoStackRef.current.clear();
   }, [activeCanvasId, activeTab]);
-
-  const stickyClipboardRef = useRef({
-    dynamicNodes,
-    activeCanvasId,
-  });
-  stickyClipboardRef.current = { dynamicNodes, activeCanvasId };
-
-  useEffect(() => {
-    if (activeTab !== 'personal') return;
-
-    const onCopy = (e: ClipboardEvent) => {
-      if (isTextEditingTarget(e.target)) return;
-      const { dynamicNodes: nodes } = stickyClipboardRef.current;
-      const focusId = lastStickyClickIdRef.current;
-      if (!focusId) return;
-      const picked = nodes.filter((n) => n.id === focusId && (n.type === 'note' || n.type === 'text'));
-      const payload = buildStickyClipboardPayload(picked);
-      if (!payload) return;
-      e.preventDefault();
-      e.clipboardData?.setData('text/plain', JSON.stringify(payload));
-    };
-
-    const onPaste = (e: ClipboardEvent) => {
-      if (isTextEditingTarget(e.target)) return;
-      const text = e.clipboardData?.getData('text/plain') ?? '';
-      const payload = parseStickyClipboardPayload(text);
-      if (!payload) return;
-      e.preventDefault();
-      const { activeCanvasId: canvasId } = stickyClipboardRef.current;
-      void (async () => {
-        const rows: CanvasNode[] = payload.nodes.map((item) => {
-          const id = crypto.randomUUID();
-          const { x, y } = stickyPastePosition(item);
-          return {
-            id,
-            canvasId,
-            type: item.type,
-            content: item.content ?? '',
-            layout: item.layout,
-            width: item.width,
-            height: item.height,
-            x,
-            y,
-          };
-        });
-        await db.nodes.bulkAdd(rows);
-      })();
-    };
-
-    window.addEventListener('copy', onCopy, true);
-    window.addEventListener('paste', onPaste, true);
-    return () => {
-      window.removeEventListener('copy', onCopy, true);
-      window.removeEventListener('paste', onPaste, true);
-    };
-  }, [activeTab]);
 
   /**
    * 捕获阶段放行文件拖放：子元素（连线粗命中区、video/img 等）若未调用 dragover.preventDefault，
@@ -356,18 +304,129 @@ export default function App() {
     activeCanvasId, nodesRef, connectingFrom, setConnectingFrom, edges, selectedNodes, setSelectedNodes, transformRef,
   });
 
+  const canvasClipboardRef = useRef({
+    dynamicNodes,
+    edges,
+    activeCanvasId,
+    selectedNodes,
+    removeNodeIds,
+  });
+  canvasClipboardRef.current = {
+    dynamicNodes,
+    edges,
+    activeCanvasId,
+    selectedNodes,
+    removeNodeIds,
+  };
+
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (activeTab !== 'personal' || isTextEditingTarget(event.target) || selectedNodes.size === 0) return;
-      if (event.key !== 'Backspace' && event.key !== 'Delete') return;
-      event.preventDefault();
-      const ids = [...selectedNodes];
-      if (editingNodeId && ids.includes(editingNodeId)) setEditingNodeId(null);
-      void removeNodeIds(ids);
+    if (activeTab !== 'personal') return;
+
+    const resolveTargetNodes = () => {
+      const { dynamicNodes: nodes, selectedNodes: selected } = canvasClipboardRef.current;
+      if (selected.size > 0) {
+        return nodes.filter((n) => selected.has(n.id));
+      }
+      const focusId = lastStickyClickIdRef.current;
+      if (!focusId) return [];
+      return nodes.filter((n) => n.id === focusId);
     };
+
+    const writeClipboard = (e: ClipboardEvent) => {
+      const picked = resolveTargetNodes();
+      if (picked.length === 0) return false;
+      const payload = buildCanvasClipboardPayload(picked, canvasClipboardRef.current.edges);
+      if (!payload) return false;
+      e.preventDefault();
+      e.clipboardData?.setData('text/plain', JSON.stringify(payload));
+      return true;
+    };
+
+    const onCopy = (e: ClipboardEvent) => {
+      if (isTextEditingTarget(e.target)) return;
+      writeClipboard(e);
+    };
+
+    const onCut = (e: ClipboardEvent) => {
+      if (isTextEditingTarget(e.target)) return;
+      if (!writeClipboard(e)) return;
+      const picked = resolveTargetNodes();
+      const ids = picked.map((n) => n.id);
+      if (ids.length === 0) return;
+      const snap = snapshotNodesAndTouchingEdges(
+        ids,
+        canvasClipboardRef.current.dynamicNodes,
+        canvasClipboardRef.current.edges,
+      );
+      canvasUndoStackRef.current.push({ type: 'delete', nodes: snap.nodes, edges: snap.edges });
+      if (editingNodeId && ids.includes(editingNodeId)) setEditingNodeId(null);
+      void canvasClipboardRef.current.removeNodeIds(ids);
+    };
+
+    const onPaste = (e: ClipboardEvent) => {
+      if (isTextEditingTarget(e.target)) return;
+      const text = e.clipboardData?.getData('text/plain') ?? '';
+      const payload = parseCanvasClipboardPayload(text);
+      if (!payload) return;
+      e.preventDefault();
+      const { activeCanvasId: canvasId } = canvasClipboardRef.current;
+      void (async () => {
+        const { nodes: rows, edges: newEdges } = materializeCanvasPaste(payload, canvasId);
+        if (rows.length === 0) return;
+        await db.transaction('rw', db.nodes, db.edges, async () => {
+          await db.nodes.bulkAdd(rows);
+          if (newEdges.length > 0) await db.edges.bulkAdd(newEdges);
+        });
+        canvasUndoStackRef.current.push({
+          type: 'paste',
+          nodeIds: rows.map((n) => n.id),
+          edgeIds: newEdges.map((ed) => ed.id),
+        });
+        setSelectedNodes(new Set(rows.map((n) => n.id)));
+      })();
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (activeTab !== 'personal' || isTextEditingTarget(event.target)) return;
+
+      const mod = event.ctrlKey || event.metaKey;
+      if (mod && (event.key === 'z' || event.key === 'Z') && !event.shiftKey) {
+        const entry = canvasUndoStackRef.current.pop();
+        if (!entry) return;
+        event.preventDefault();
+        void applyCanvasUndo(entry).then(() => {
+          if (entry.type === 'delete') {
+            setSelectedNodes(new Set(entry.nodes.map((n) => n.id)));
+          } else {
+            setSelectedNodes(new Set());
+          }
+        });
+        return;
+      }
+
+      if (event.key !== 'Backspace' && event.key !== 'Delete') return;
+      const { selectedNodes: selected, dynamicNodes: nodes, edges: canvasEdges } =
+        canvasClipboardRef.current;
+      if (selected.size === 0) return;
+      event.preventDefault();
+      const ids = [...selected];
+      const snap = snapshotNodesAndTouchingEdges(ids, nodes, canvasEdges);
+      canvasUndoStackRef.current.push({ type: 'delete', nodes: snap.nodes, edges: snap.edges });
+      if (editingNodeId && ids.includes(editingNodeId)) setEditingNodeId(null);
+      void canvasClipboardRef.current.removeNodeIds(ids);
+    };
+
+    window.addEventListener('copy', onCopy, true);
+    window.addEventListener('cut', onCut, true);
+    window.addEventListener('paste', onPaste, true);
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [activeTab, editingNodeId, removeNodeIds, selectedNodes]);
+    return () => {
+      window.removeEventListener('copy', onCopy, true);
+      window.removeEventListener('cut', onCut, true);
+      window.removeEventListener('paste', onPaste, true);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [activeTab, editingNodeId]);
 
   // AI actions (publish, agent analysis, AI submit)
   const {
