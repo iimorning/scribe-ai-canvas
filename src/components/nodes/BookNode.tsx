@@ -6,6 +6,10 @@ import type { BookNodeProps } from './types';
 import { CANVAS_NODE_CONTEXT_TEXT_ATTR } from '../../utils/canvasNodeContextText';
 import type { BookContentBlock } from '../../utils/bookPayload';
 import { tryParseBookContent } from '../../utils/bookPayload';
+import {
+  BOOK_READER_PAGE_LOCK_MS,
+  nextBookReaderScrollTop,
+} from '../../utils/bookReaderScroll';
 
 function clampPageIndex(index: number, unitCount: number): number {
   if (unitCount <= 0) return 0;
@@ -80,6 +84,7 @@ export function BookNode({
   const bodyRef = useRef<HTMLDivElement>(null);
   const scrollSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ignoreScrollPersistRef = useRef(false);
+  const pageScrollLockUntilRef = useRef(0);
   const [askUi, setAskUi] = useState<{ top: number; left: number; text: string } | null>(null);
 
   const unitCount = book?.units.length ?? 0;
@@ -124,6 +129,42 @@ export function BookNode({
       if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current);
     };
   }, []);
+
+  // Full-viewport page jumps on every wheel notch/gesture (no already-read overlap).
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) return;
+      if (e.deltaY === 0) return;
+
+      const now = performance.now();
+      if (now < pageScrollLockUntilRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
+      const direction: 1 | -1 = e.deltaY > 0 ? 1 : -1;
+      const nextTop = nextBookReaderScrollTop({
+        scrollTop: el.scrollTop,
+        clientHeight: el.clientHeight,
+        scrollHeight: el.scrollHeight,
+        direction,
+      });
+      if (nextTop === el.scrollTop) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      pageScrollLockUntilRef.current = now + BOOK_READER_PAGE_LOCK_MS;
+      el.scrollTop = nextTop;
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+    // unitCount: bodyRef only mounts once parsed book units exist.
+  }, [safeIndex, node.id, unitCount]);
 
   const clearAskUi = useCallback(() => setAskUi(null), []);
 
