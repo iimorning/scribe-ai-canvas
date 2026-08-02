@@ -42,4 +42,23 @@ describe('stripThinking', () => {
   it('passes plain answer through unchanged', () => {
     expect(stripThinking('普通回答')).toBe('普通回答');
   });
+
+  it('strips MiniMax namespace token and tool_call chrome after prose', () => {
+    const prose = '我来帮你搜索一下关于这件事的信息。';
+    const leaked =
+      prose +
+      '\n]<]minimax[>\n[<tool_call> {"name": "search", "arguments": {"query": "Hugging Face"}}';
+    expect(stripThinking(leaked).trim()).toBe(prose);
+  });
+
+  it('strips full MiniMax ns_token-prefixed tool_call block', () => {
+    const prose = '答案如下。';
+    const ns = ']<]minimax[>[';
+    const leaked = `${prose}\n${ns}<tool_call>\n${ns}<invoke name="search">\n${ns}</tool_call>`;
+    expect(stripThinking(leaked).trim()).toBe(prose);
+  });
+
+  it('hides incomplete tool_call while streaming', () => {
+    expect(stripThinking('前言\n[<tool_call> {"name":').trim()).toBe('前言');
+  });
 });

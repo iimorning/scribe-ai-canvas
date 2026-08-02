@@ -216,6 +216,58 @@ describe('openVolcAsrSession', () => {
     expect(onDefinite.mock.calls[0]?.[0]).toContain('第二句。');
   });
 
+  it('prefers cumulative result.text over joining utterance fragments', async () => {
+    const onPartial = vi.fn();
+    await init({ onPartial });
+    FakeWebSocket.instances[FakeWebSocket.instances.length - 1]!.fakeMessage(
+      buildJsonServerFrame({
+        result: {
+          text: '联网搜索一下那个最近 OpenAI 攻击 Hugging Face 的新闻',
+          utterances: [
+            { text: '联网搜索一下', definite: false },
+            { text: '那个最近', definite: false },
+          ],
+        },
+      }),
+    );
+    expect(onPartial).toHaveBeenCalledWith('联网搜索一下那个最近 OpenAI 攻击 Hugging Face 的新闻');
+  });
+
+  it('emits full cumulative text on definite frames that also have a new partial', async () => {
+    const onDefinite = vi.fn();
+    const onPartial = vi.fn();
+    await init({ onDefinite, onPartial });
+    FakeWebSocket.instances[FakeWebSocket.instances.length - 1]!.fakeMessage(
+      buildJsonServerFrame({
+        result: {
+          text: '第一句。第二句还在说',
+          utterances: [
+            { text: '第一句。', definite: true },
+            { text: '第二句还在说', definite: false },
+          ],
+        },
+      }),
+    );
+    expect(onDefinite).toHaveBeenCalledWith('第一句。第二句还在说');
+    expect(onPartial).not.toHaveBeenCalled();
+  });
+
+  it('dedupes identical definite utterances from nostream re-decode', async () => {
+    const onDefinite = vi.fn();
+    await init({ onDefinite });
+    FakeWebSocket.instances[FakeWebSocket.instances.length - 1]!.fakeMessage(
+      buildJsonServerFrame({
+        result: {
+          utterances: [
+            { text: '同一句。', definite: true },
+            { text: '同一句。', definite: true },
+          ],
+        },
+      }),
+    );
+    expect(onDefinite).toHaveBeenCalledWith('同一句。');
+  });
+
   it('skips definite-only frames whose text is just whitespace', async () => {
     const onDefinite = vi.fn();
     const onPartial = vi.fn();

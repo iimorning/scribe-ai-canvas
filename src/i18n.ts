@@ -47,9 +47,10 @@ const resources = {
       "voice": {
         "toggle_on": "Start voice writing",
         "toggle_off": "Stop voice writing",
-        "input_placeholder": "Voice mode — speak to the canvas…",
+        "finish_turn": "Finish this turn (send to AI)",
+        "input_placeholder": "Voice mode — speak, then tap the mic to send…",
         "phase_idle": "Voice mode",
-        "phase_listening": "Listening…",
+        "phase_listening": "Listening… tap mic when done",
         "phase_thinking": "Thinking…",
         "phase_speaking": "Speaking…",
         "need_asr_keys": "Add Volcengine ASR credentials in Settings (API Key, or App ID + Access Token).",
@@ -222,7 +223,7 @@ const resources = {
           "threadFollowUp": "You are continuing a dialogue on the canvas. The assistant’s previous reply was:\n\n---\n{{previous}}\n---\n\nThe user’s new message:\n{{request}}\n\nRespond as a thoughtful continuation. Address the follow-up directly; keep the same voice and depth as before unless the user asks otherwise.",
           "agentThreadContextMissing": "(Original source note is unavailable or was removed — continue using the dialogue below.)",
           "agentThreadFollowUp": "You are continuing an agent-persona thread on the canvas.\n\n## Original material (same as the first analysis)\n\n---\n{{initialContext}}\n---\n\n## Dialogue so far (oldest to newest)\n\n{{dialogueHistory}}\n\n## User’s new message\n\n{{request}}\n\nReply as a direct continuation: stay aligned with the agent’s role, keep depth consistent, and tie back to the original material when relevant.",
-          "voiceWritingPersona": "You are a calm voice writing partner. The user is speaking thoughts aloud. Reply in concise spoken-friendly prose (short paragraphs, no markdown tables or heavy lists). Help them clarify, deepen, and continue thinking. Match their language. Do not mention canvases, notes, cards, or product UI unless they ask."
+          "voiceWritingPersona": "You are a calm voice writing partner. The user is speaking thoughts aloud. Reply in concise spoken-friendly prose (short paragraphs, no markdown tables or heavy lists). Help them clarify, deepen, and continue thinking. Match their language. Do not mention canvases, notes, cards, or product UI unless they ask. Never emit tool_call markup, function-call JSON, XML tool tags, or special tokens such as ]<]minimax[> — answer in plain natural language only."
         }
       },
       "lab": {
@@ -401,9 +402,10 @@ const resources = {
       "voice": {
         "toggle_on": "开启语音写作",
         "toggle_off": "关闭语音写作",
-        "input_placeholder": "语音模式 — 对着画布说话…",
+        "finish_turn": "结束本轮并发送给 AI",
+        "input_placeholder": "语音模式 — 说完后点麦克风发送…",
         "phase_idle": "语音模式",
-        "phase_listening": "正在听写…",
+        "phase_listening": "正在听写…说完请点麦克风",
         "phase_thinking": "正在思考…",
         "phase_speaking": "正在朗读…",
         "need_asr_keys": "请先在设置中填写火山 ASR 凭证（API Key，或 App ID + Access Token）。",
@@ -576,7 +578,7 @@ const resources = {
           "threadFollowUp": "你正在画布上延续一段对话。助手上一轮回复如下：\n\n---\n{{previous}}\n---\n\n用户的新消息：\n{{request}}\n\n请承接上文，直接回应这条追问；语气与深度与之前保持一致，除非用户另有要求。",
           "agentThreadContextMissing": "（首轮分析的原始便签不可用或已删除，请仅依据下列对话与当前追问作答。）",
           "agentThreadFollowUp": "你正在延续画布上某一 Agent 人格的对话线程。\n\n## 原始材料（与首次分析时相同的那份正文）\n\n---\n{{initialContext}}\n---\n\n## 已发生的对话（从旧到新）\n\n{{dialogueHistory}}\n\n## 用户本条消息\n\n{{request}}\n\n请直接接着谈：保持该 Agent 人设与深度；需要时请回扣原始材料。",
-          "voiceWritingPersona": "你是冷静的语音写作搭档。用户正在口述想法。请用适合朗读的简洁散文回复（短段落，避免表格与过重列表）。帮助对方澄清、深入并继续思考。与用户使用同一语言。除非用户问起，否则不要提及画布、便签、卡片或产品界面。"
+          "voiceWritingPersona": "你是冷静的语音写作搭档。用户正在口述想法。请用适合朗读的简洁散文回复（短段落，避免表格与过重列表）。帮助对方澄清、深入并继续思考。与用户使用同一语言。除非用户问起，否则不要提及画布、便签、卡片或产品界面。禁止输出 tool_call、函数调用 JSON、XML 工具标签，或 ]<]minimax[> 之类特殊标记——只用自然语言回答。"
         }
       },
       "lab": {

@@ -60,16 +60,22 @@ export function useVoiceWritingMode({
   const ttsRef = useRef<ReturnType<typeof createTtsSentenceQueue> | null>(null);
   const handlingUtteranceRef = useRef(false);
   const pausedListeningRef = useRef(false);
+  const latestTranscriptRef = useRef('');
+  const voicePhaseRef = useRef<VoicePhase>('idle');
+  /** Assigned while a listening session is live; mic toggle calls this to commit the turn. */
+  const finishListeningRoundRef = useRef<(() => void) | null>(null);
   // Synchronous gate: voiceModeActive is React state and lags behind ref writes by one tick,
   // so a fast double-click observes the same `false` in both closures and would launch two
   // sessions. `startingRef` is a ref so the second click sees `true` immediately.
   const startingRef = useRef(false);
 
   const setPhase = (p: VoicePhase) => {
+    voicePhaseRef.current = p;
     setVoicePhase(p);
   };
 
   const teardownSession = useCallback(async () => {
+    finishListeningRoundRef.current = null;
     const promises: Promise<void>[] = [];
     try {
       asrRef.current?.close();
@@ -126,6 +132,8 @@ export function useVoiceWritingMode({
     pausedListeningRef.current = true;
     handlingUtteranceRef.current = false;
     startingRef.current = false;
+    latestTranscriptRef.current = '';
+    finishListeningRoundRef.current = null;
     void teardownSession().finally(() => {
       setStreamingAiNodeId(null);
       setVoiceModeActive(false);
@@ -146,16 +154,43 @@ export function useVoiceWritingMode({
       resourceId: aiConfig.volcAsrResourceId || VOLC_ASR_DEFAULT_RESOURCE_ID,
     };
 
-    const handleDefinite = (text: string) => {
+    latestTranscriptRef.current = '';
+
+    // Volc result_type=full: every callback is the complete transcript so far. Replace
+    // the note — do not concatenate, or revised hypotheses stack into an "echo".
+    const applyTranscript = (incoming: string) => {
+      const next = incoming.trim();
+      if (!next || next === latestTranscriptRef.current) return;
+      latestTranscriptRef.current = next;
+      const id = currentUserNoteIdRef.current;
+      console.log('[Spoor Voice] transcript → db.update', { id, next });
+      if (id) void db.nodes.update(id, { content: next });
+    };
+
+    const commitUtterance = (text: string) => {
       if (!activeRef.current || handlingUtteranceRef.current) return;
       const trimmed = text.trim();
       if (!trimmed) return;
       handlingUtteranceRef.current = true;
       pausedListeningRef.current = true;
+      latestTranscriptRef.current = '';
+      finishListeningRoundRef.current = null;
       void teardownSession();
       void runAiTurn(trimmed).finally(() => {
         handlingUtteranceRef.current = false;
       });
+    };
+
+    finishListeningRoundRef.current = () => {
+      if (!activeRef.current || handlingUtteranceRef.current) return;
+      if (voicePhaseRef.current !== 'listening') return;
+      const text = latestTranscriptRef.current.trim();
+      if (!text) {
+        // Nothing spoken — treat mic-off as exiting voice mode.
+        stopVoiceMode();
+        return;
+      }
+      commitUtterance(text);
     };
 
     const session = await openVolcAsrSession(creds, {
@@ -165,11 +200,14 @@ export function useVoiceWritingMode({
           console.log('[Spoor Voice] onPartial dropped', { active: activeRef.current, paused: pausedListeningRef.current });
           return;
         }
-        const id = currentUserNoteIdRef.current;
-        console.log('[Spoor Voice] onPartial → db.update', { id, hasId: !!id });
-        if (id) void db.nodes.update(id, { content: partial });
+        applyTranscript(partial);
       },
-      onDefinite: handleDefinite,
+      onDefinite: (text) => {
+        // Definite only finalizes transcript segments — never auto-starts the AI turn.
+        console.log('[Spoor Voice] onDefinite (accumulate only)', JSON.stringify(text));
+        if (!activeRef.current || pausedListeningRef.current) return;
+        applyTranscript(text);
+      },
       onError: (message) => {
         if (!activeRef.current) return;
         console.error('[Spoor] Volc ASR', message);
@@ -286,9 +324,10 @@ export function useVoiceWritingMode({
                 // Show sources as linked cards without holding up the answer / TTS pipeline.
                 void spawnWebSearchCardsFromPages(aiNodeId, aiPos, pages, activeCanvasId);
                 aiPrompt = [
-                  `用户的联网搜索问题：${query}`,
+                  `用户的问题：${query}`,
+                  '系统已经完成网页检索，结果如下（请直接据此回答，不要再发起搜索或工具调用）：',
                   searchContext,
-                  '请仅基于以上来源回答，清楚说明不确定之处；不要提及内部工具或检索流程。',
+                  '要求：只用自然语言回答；禁止输出 tool_call、函数调用 JSON、XML 标签，或任何 ]<]minimax[> 之类的特殊标记；不要提及内部工具或检索流程；不确定处请说清楚。',
                 ].join('\n\n');
               }
             } catch (e) {
@@ -458,11 +497,17 @@ export function useVoiceWritingMode({
 
   const toggleVoiceMode = useCallback(() => {
     if (startingRef.current) return; // mid-startup click — let the in-flight start resolve
-    if (voiceModeActive) {
-      stopVoiceMode();
-    } else {
+    if (!voiceModeActive) {
       void startVoiceMode();
+      return;
     }
+    // Listening: mic-off ends this speaking turn (or exits if nothing was said).
+    // Thinking / speaking: mic-off cancels the whole voice session.
+    if (voicePhaseRef.current === 'listening' && !handlingUtteranceRef.current) {
+      finishListeningRoundRef.current?.();
+      return;
+    }
+    stopVoiceMode();
   }, [startVoiceMode, stopVoiceMode, voiceModeActive]);
 
   useEffect(() => {

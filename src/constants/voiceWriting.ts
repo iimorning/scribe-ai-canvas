@@ -7,6 +7,12 @@ export const VOLC_ASR_UPSTREAM_PATH = '/api/v3/sauc/bigmodel_async';
 /** Same-origin Vite/Tauri proxy path for Volc ASR WebSocket. */
 export const VOLC_ASR_PROXY_PATH = '/api/volc-asr';
 
+/**
+ * Silence (ms) before Volc ASR marks an utterance `definite` for transcript quality.
+ * Turns are committed only when the user manually closes the mic — this does not end a turn.
+ */
+export const VOLC_ASR_END_WINDOW_MS = 2200;
+
 /** MiniMax China OpenAPI host (proxied as /api/minimax). */
 export const MINIMAX_API_ORIGIN = 'https://api.minimaxi.com';
 

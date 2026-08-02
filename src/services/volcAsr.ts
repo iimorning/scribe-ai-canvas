@@ -1,5 +1,6 @@
 import {
   VOLC_ASR_DEFAULT_RESOURCE_ID,
+  VOLC_ASR_END_WINDOW_MS,
   VOLC_ASR_PROXY_PATH,
 } from '../constants/voiceWriting';
 import {
@@ -95,11 +96,34 @@ export function hasVolcAsrCredentials(creds: VolcAsrCredentials): boolean {
   return !!(creds.appId ?? '').trim() && !!(creds.accessToken ?? '').trim();
 }
 
-function joinDefinite(utterances: VolcAsrUtterance[]): string {
-  return utterances
-    .filter((u) => u.definite && (u.text ?? '').trim())
-    .map((u) => u.text.trim())
-    .join(' ');
+/** Join utterance texts, skipping exact duplicate segments (nostream can re-emit the same line). */
+function joinUtteranceTexts(utterances: VolcAsrUtterance[]): string {
+  let out = '';
+  for (const u of utterances) {
+    const t = (u.text ?? '').trim();
+    if (!t) continue;
+    if (!out) {
+      out = t;
+      continue;
+    }
+    if (t === out || out.endsWith(t)) continue;
+    if (t.startsWith(out)) {
+      out = t;
+      continue;
+    }
+    out = `${out}${t}`;
+  }
+  return out;
+}
+
+/** Cumulative transcript for result_type=full — prefer server `text`, else utterances. */
+function fullTranscriptFromParsed(parsed: {
+  text?: string;
+  utterances: VolcAsrUtterance[];
+}): string {
+  const fromText = (parsed.text ?? '').trim();
+  if (fromText) return fromText;
+  return joinUtteranceTexts(parsed.utterances);
 }
 
 export type OpenVolcAsrSessionOptions = {
@@ -197,7 +221,8 @@ export async function openVolcAsrSession(
           show_utterances: true,
           result_type: 'full',
           enable_nonstream: true,
-          end_window_size: 800,
+          // Silence window before definite. 800ms ends mid-thought on any brief pause.
+          end_window_size: VOLC_ASR_END_WINDOW_MS,
           force_to_speech_time: 1000,
         },
       });
@@ -225,22 +250,21 @@ export async function openVolcAsrSession(
     if (!ready) console.log('[Spoor ASR] first non-error frame → ready');
     markReadyAndFlush();
 
-    const definiteText = joinDefinite(parsed.utterances);
-    if (definiteText) {
-      console.log('[Spoor ASR] onDefinite', JSON.stringify(definiteText));
-      handlers.onDefinite?.(definiteText);
+    // result_type=full: each frame carries the cumulative transcript. Always emit that
+    // whole string (replace upstream) — never only the latest fragment, or voice UI will
+    // concatenate revised hypotheses and look like an echo.
+    const fullText = fullTranscriptFromParsed(parsed);
+    if (!fullText) return;
+
+    const hasDefinite = parsed.utterances.some((u) => u.definite && (u.text ?? '').trim());
+    if (hasDefinite) {
+      console.log('[Spoor ASR] onDefinite', JSON.stringify(fullText));
+      handlers.onDefinite?.(fullText);
       return;
     }
 
-    const partialFromUtterances = parsed.utterances
-      .filter((u) => !u.definite)
-      .map((u) => u.text)
-      .join('');
-    const partial = (partialFromUtterances || parsed.text || '').trim();
-    if (partial) {
-      console.log('[Spoor ASR] onPartial', JSON.stringify(partial));
-      handlers.onPartial?.(partial);
-    }
+    console.log('[Spoor ASR] onPartial', JSON.stringify(fullText));
+    handlers.onPartial?.(fullText);
   };
 
   ws.onmessage = (ev) => {

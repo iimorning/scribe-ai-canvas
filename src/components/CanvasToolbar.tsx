@@ -154,7 +154,13 @@ export function CanvasToolbar({
             </label>
             <button
               type="button"
-              title={voiceModeActive ? t('voice.toggle_off') : t('voice.toggle_on')}
+              title={
+                !voiceModeActive
+                  ? t('voice.toggle_on')
+                  : voicePhase === 'listening'
+                    ? t('voice.finish_turn')
+                    : t('voice.toggle_off')
+              }
               onClick={onToggleVoiceMode}
               className={`w-8 h-8 flex items-center justify-center rounded-lg cursor-pointer transition-colors ${
                 voiceModeActive
