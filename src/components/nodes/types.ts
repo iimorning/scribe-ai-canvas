@@ -43,6 +43,8 @@ export interface AiNodeProps extends NodeContentProps {
 }
 
 export interface BookNodeProps extends NodeContentProps {
+  /** Create a plain text note from the selection (no AI). */
+  onExtractSelectionToCard?: (quote: string, sourceLabel?: string, sourceNodeId?: string) => void;
   /** Quote selected text into the toolbar AI context. */
   onAskAboutSelection?: (quote: string, sourceLabel?: string, sourceNodeId?: string) => void;
   /** Expand selected text into a theme hub + linked note cards. */

@@ -27,6 +27,7 @@ interface NodeRendererProps {
   webSearchSourcesCollapsed?: boolean;
   onToggleWebSearchSources?: (nodeId: string) => void;
   ttsHighlightSentence?: string | null;
+  onExtractBookSelectionToCard?: (quote: string, sourceLabel?: string, sourceNodeId?: string) => void;
   onAskAboutBookSelection?: (quote: string, sourceLabel?: string, sourceNodeId?: string) => void;
   onExpandBookSelection?: (quote: string, sourceLabel?: string) => void;
   expandingBookNodeId?: string | null;
@@ -50,6 +51,7 @@ export function NodeRenderer({
   webSearchSourcesCollapsed,
   onToggleWebSearchSources,
   ttsHighlightSentence,
+  onExtractBookSelectionToCard,
   onAskAboutBookSelection,
   onExpandBookSelection,
   expandingBookNodeId,
@@ -114,6 +116,7 @@ export function NodeRenderer({
           node={node}
           editingNodeId={editingNodeId}
           setEditingNodeId={setEditingNodeId}
+          onExtractSelectionToCard={onExtractBookSelectionToCard}
           onAskAboutSelection={onAskAboutBookSelection}
           onExpandSelection={onExpandBookSelection}
           isExpanding={expandingBookNodeId === node.id}

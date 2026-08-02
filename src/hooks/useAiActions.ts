@@ -14,7 +14,7 @@ import {
   spawnWebSearchCardsFromPages,
 } from '../services/spawnWebSearchNoteCards';
 import { parseThreadWebSearchIntent, type WebSearchKind } from '../utils/webSearchCommand';
-import { findOpenCanvasPosition, NEW_AI_NODE_SIZE } from '../utils/canvas';
+import { DEFAULT_NODE_SIZE, findOpenCanvasPosition, NEW_AI_NODE_SIZE } from '../utils/canvas';
 import { buildAgentSystemInstruction, combineSystemParts, getLocaleDirective } from '../utils/aiI18n';
 import { collectAiThreadChain, formatAgentThreadDialogueHistory } from '../utils/agentThreadContext';
 import {
@@ -320,6 +320,43 @@ export function useAiActions({
       noteSearchGuardRef.current = false;
       setSearchingNoteNodeId(null);
     }
+  };
+
+  /** Turn a book selection into a plain text note linked to the book (no AI). */
+  const extractBookSelectionToCard = async (
+    bookNodeId: string,
+    quote: string,
+    _sourceLabel?: string,
+  ) => {
+    const passage = quote.replace(/\s+/g, ' ').trim();
+    if (!passage) return;
+
+    const bookNode = dynamicNodes.find((n) => n.id === bookNodeId);
+    if (!bookNode || bookNode.type !== 'book') return;
+
+    const { x, y } = findOpenCanvasPosition({
+      transform: transformRef.current,
+      obstacles: dynamicNodes,
+      size: DEFAULT_NODE_SIZE,
+      preferBeside: bookNode,
+    });
+    const noteId = crypto.randomUUID();
+    await db.transaction('rw', db.nodes, db.edges, async () => {
+      await db.nodes.add({
+        id: noteId,
+        canvasId: activeCanvasId,
+        type: 'text',
+        content: passage,
+        x,
+        y,
+      });
+      await db.edges.add({
+        id: crypto.randomUUID(),
+        canvasId: activeCanvasId,
+        from: bookNodeId,
+        to: noteId,
+      });
+    });
   };
 
   const expandBookSelection = async (
@@ -783,6 +820,7 @@ export function useAiActions({
     pendingQuote,
     askAboutSelection,
     clearPendingQuote,
+    extractBookSelectionToCard,
     expandBookSelection,
     expandingBookNodeId,
     searchNoteWithMedia,

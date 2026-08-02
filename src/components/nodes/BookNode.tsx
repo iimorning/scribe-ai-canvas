@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, ChevronLeft, ChevronRight, GitBranch, Loader2, Sparkles } from 'lucide-react';
+import { BookOpen, ChevronLeft, ChevronRight, GitBranch, Loader2, StickyNote, Sparkles } from 'lucide-react';
 import { db } from '../../db';
 import type { BookNodeProps } from './types';
 import { CANVAS_NODE_CONTEXT_TEXT_ATTR } from '../../utils/canvasNodeContextText';
@@ -77,6 +77,7 @@ function BookUnitBody({
 
 export function BookNode({
   node,
+  onExtractSelectionToCard,
   onAskAboutSelection,
   onExpandSelection,
   isExpanding = false,
@@ -302,25 +303,33 @@ export function BookNode({
     setAskUi({ text, top, left });
   }, [isExpanding]);
 
-  const runAskAboutSelection = useCallback(() => {
-    const quote = askQuoteRef.current;
-    if (!quote || !onAskAboutSelection) return;
-    onAskAboutSelection(quote.text, quote.sourceLabel, node.id);
+  const dismissSelectionToolbar = useCallback(() => {
     askToolbarArmedRef.current = false;
     askQuoteRef.current = null;
     clearAskUi();
     window.getSelection()?.removeAllRanges();
-  }, [onAskAboutSelection, clearAskUi, node.id]);
+  }, [clearAskUi]);
+
+  const runExtractSelectionToCard = useCallback(() => {
+    const quote = askQuoteRef.current;
+    if (!quote || !onExtractSelectionToCard) return;
+    onExtractSelectionToCard(quote.text, quote.sourceLabel, node.id);
+    dismissSelectionToolbar();
+  }, [onExtractSelectionToCard, dismissSelectionToolbar, node.id]);
+
+  const runAskAboutSelection = useCallback(() => {
+    const quote = askQuoteRef.current;
+    if (!quote || !onAskAboutSelection) return;
+    onAskAboutSelection(quote.text, quote.sourceLabel, node.id);
+    dismissSelectionToolbar();
+  }, [onAskAboutSelection, dismissSelectionToolbar, node.id]);
 
   const runExpandSelection = useCallback(() => {
     const quote = askQuoteRef.current;
     if (!quote || !onExpandSelection) return;
     onExpandSelection(quote.text, quote.sourceLabel);
-    askToolbarArmedRef.current = false;
-    askQuoteRef.current = null;
-    clearAskUi();
-    window.getSelection()?.removeAllRanges();
-  }, [onExpandSelection, clearAskUi]);
+    dismissSelectionToolbar();
+  }, [onExpandSelection, dismissSelectionToolbar]);
 
   useEffect(() => {
     const onSelChange = () => {
@@ -349,7 +358,10 @@ export function BookNode({
   const hasHeadingBlocks = Boolean(unit?.blocks?.some((b) => b.type === 'heading'));
   // Avoid duplicating the chapter title when body already renders h1–h6.
   const showUnitTitle = Boolean(unit?.title && book.format === 'epub' && !hasHeadingBlocks);
-  const showSelectionActions = askUi && (onAskAboutSelection || onExpandSelection) && !isExpanding;
+  const showSelectionActions =
+    askUi &&
+    (onExtractSelectionToCard || onAskAboutSelection || onExpandSelection) &&
+    !isExpanding;
 
   return (
     <div
@@ -418,10 +430,29 @@ export function BookNode({
               askToolbarArmedRef.current = false;
             }}
           >
-            {onAskAboutSelection && (
+            {onExtractSelectionToCard && (
               <button
                 type="button"
                 className="flex items-center gap-1 px-2 py-1 rounded-md bg-[#C2410C] text-white text-[11px] font-sans font-bold hover:bg-[#a0350a] transition-colors"
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  askToolbarArmedRef.current = true;
+                }}
+                onPointerUp={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  runExtractSelectionToCard();
+                }}
+              >
+                <StickyNote className="w-3 h-3" />
+                {t('nodes.book_to_card')}
+              </button>
+            )}
+            {onAskAboutSelection && (
+              <button
+                type="button"
+                className="flex items-center gap-1 px-2 py-1 rounded-md text-[#C2410C] text-[11px] font-sans font-bold hover:bg-[#FFF7ED] transition-colors"
                 onPointerDown={(e) => {
                   e.stopPropagation();
                   e.preventDefault();

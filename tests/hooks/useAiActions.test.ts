@@ -254,6 +254,39 @@ describe('useAiActions', () => {
       );
     });
 
+    it('书摘做成卡片时创建便签并连线到书籍', async () => {
+      const book: CanvasNode = {
+        id: 'book-1',
+        canvasId: 'default',
+        type: 'book',
+        content: 'Book title',
+        x: 100,
+        y: 80,
+        width: 380,
+        height: 520,
+      };
+      await db.nodes.add(book);
+
+      const { result } = renderHook(() =>
+        useTestAiActions({ dynamicNodes: [book] }),
+      );
+
+      await act(async () => {
+        await result.current.extractBookSelectionToCard('book-1', '  一段摘录  ', 'Book title');
+      });
+
+      const notes = (await db.nodes.toArray()).filter((n) => n.type === 'text');
+      expect(notes).toHaveLength(1);
+      expect(notes[0]!.content).toBe('一段摘录');
+      const edges = await db.edges.toArray();
+      expect(edges).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ from: 'book-1', to: notes[0]!.id }),
+        ]),
+      );
+      expect(callUniversalAI).not.toHaveBeenCalled();
+    });
+
     it('书摘问 AI 时新卡与书籍自动连线', async () => {
       const book: CanvasNode = {
         id: 'book-1',

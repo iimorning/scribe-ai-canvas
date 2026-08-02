@@ -454,6 +454,7 @@ export default function App() {
     pendingQuote,
     askAboutSelection,
     clearPendingQuote,
+    extractBookSelectionToCard,
     expandBookSelection,
     expandingBookNodeId,
     searchNoteWithMedia,
@@ -910,6 +911,13 @@ export default function App() {
                     ttsHighlightSentence={
                       ttsHighlight?.nodeId === node.id ? ttsHighlight.sentence : null
                     }
+                    onExtractBookSelectionToCard={(quote, sourceLabel, sourceNodeId) => {
+                      void extractBookSelectionToCard(
+                        sourceNodeId || node.id,
+                        quote,
+                        sourceLabel,
+                      );
+                    }}
                     onAskAboutBookSelection={askAboutSelection}
                     onExpandBookSelection={(quote, sourceLabel) => {
                       void expandBookSelection(node.id, quote, sourceLabel);
