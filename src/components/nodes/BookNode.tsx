@@ -221,6 +221,19 @@ export function BookNode({
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.shiftKey) return; // shift+arrow = native text selection
+      // Left/Right flip chapters directly (same as the bottom chevron buttons).
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        e.stopPropagation();
+        goToPageRef.current(pageIndexRef.current - 1);
+        return;
+      }
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        e.stopPropagation();
+        goToPageRef.current(pageIndexRef.current + 1);
+        return;
+      }
       let direction: 1 | -1 | null = null;
       if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') direction = 1;
       else if (e.key === 'ArrowUp' || e.key === 'PageUp') direction = -1;
