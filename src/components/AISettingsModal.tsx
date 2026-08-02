@@ -16,6 +16,7 @@ import { DESKTOP_RELEASE_URL } from '../constants/desktopRelease';
 import { openExternalUrl } from '../utils/openExternal';
 import { isTauriRuntime } from '../utils/isTauriRuntime';
 import { AISettingsDocsPanel } from './AISettingsDocsPanel';
+import { useTheme, type ThemeMode } from '../hooks/useTheme';
 
 export interface AIConfig {
   provider: string;
@@ -52,6 +53,7 @@ export interface AISettingsModalProps {
 
 export function AISettingsModal({ isOpen, onClose, config, setConfig }: AISettingsModalProps) {
   const { t, i18n } = useTranslation();
+  const { mode: themeMode, setMode: setThemeMode } = useTheme();
   const inDesktopApp = isTauriRuntime();
   const hostedMimo = config.provider === 'mimo' && hasBuiltinMimoApiKey();
   const hostedDoubao = config.provider === 'doubao' && hasBuiltinDoubaoApiKey();
@@ -96,6 +98,24 @@ export function AISettingsModal({ isOpen, onClose, config, setConfig }: AISettin
               >
                 中文
               </button>
+            </div>
+          </div>
+
+          <div className="h-px bg-[#F4F1ED]"></div>
+
+          {/* Appearance / theme */}
+          <div className="space-y-3">
+            <label className="text-[10px] font-mono font-bold text-[#8c8a84] uppercase tracking-wider">{t('settings.appearance')}</label>
+            <div className="grid grid-cols-3 gap-3">
+              {(['light', 'dark', 'system'] as ThemeMode[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setThemeMode(m)}
+                  className={`flex items-center justify-center gap-2 h-10 px-4 rounded-lg border transition-all text-sm font-bold ${themeMode === m ? 'border-[#C2410C] bg-[#C2410C]/5 text-[#C2410C]' : 'border-[#E6E4DF] text-[#5a5a54] hover:border-[#C2410C]/30'}`}
+                >
+                  {t(`settings.theme_${m}`)}
+                </button>
+              ))}
             </div>
           </div>
 

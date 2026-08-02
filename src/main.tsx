@@ -5,9 +5,11 @@ import App from './App.tsx';
 import { AppDialogProvider } from './components/AppDialogProvider';
 import './index.css';
 import { registerDevBuiltinAgentReset } from './dev/resetBuiltinAgents';
+import { initTheme } from './hooks/useTheme';
 import logoUrl from '../LOGO.png';
 
 registerDevBuiltinAgentReset();
+initTheme();
 
 document.title = 'Spoor';
 
