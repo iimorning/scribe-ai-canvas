@@ -74,7 +74,10 @@ const resources = {
         "mic_denied": "Microphone permission denied. Allow mic access and try again.",
         "asr_error": "Speech recognition failed: {{message}}",
         "tts_error": "Speech synthesis failed: {{message}}",
-        "ai_error": "Voice writing AI failed: {{message}}"
+        "ai_error": "Voice writing AI failed: {{message}}",
+        "book_chat_start": "Chat about this page",
+        "book_chat_stop": "Stop voice chat",
+        "book_chat_title": "Voice chat"
       },
       "nodes": {
         "theme": "Core Theme",
@@ -284,7 +287,9 @@ const resources = {
           "threadFollowUp": "You are continuing a dialogue on the canvas. The assistant’s previous reply was:\n\n---\n{{previous}}\n---\n\nThe user’s new message:\n{{request}}\n\nRespond as a thoughtful continuation. Address the follow-up directly; keep the same voice and depth as before unless the user asks otherwise.",
           "agentThreadContextMissing": "(Original source note is unavailable or was removed — continue using the dialogue below.)",
           "agentThreadFollowUp": "You are continuing an agent-persona thread on the canvas.\n\n## Original material (same as the first analysis)\n\n---\n{{initialContext}}\n---\n\n## Dialogue so far (oldest to newest)\n\n{{dialogueHistory}}\n\n## User’s new message\n\n{{request}}\n\nReply as a direct continuation: stay aligned with the agent’s role, keep depth consistent, and tie back to the original material when relevant.",
-          "voiceWritingPersona": "You are a calm voice writing partner. The user is speaking thoughts aloud. Reply in concise spoken-friendly prose (short paragraphs, no markdown tables or heavy lists). Help them clarify, deepen, and continue thinking. Match their language. Do not mention canvases, notes, cards, or product UI unless they ask. Never emit tool_call markup, function-call JSON, XML tool tags, or special tokens such as ]<]minimax[> — answer in plain natural language only."
+          "voiceWritingPersona": "You are a calm voice writing partner. The user is speaking thoughts aloud. Reply in concise spoken-friendly prose (short paragraphs, no markdown tables or heavy lists). Help them clarify, deepen, and continue thinking. Match their language. Do not mention canvases, notes, cards, or product UI unless they ask. Never emit tool_call markup, function-call JSON, XML tool tags, or special tokens such as ]<]minimax[> — answer in plain natural language only.",
+          "bookVoicePersona": "You are a thoughtful reading companion chatting by voice with the user about the book page they are currently reading. You can see the page content provided below. Discuss, explain, and answer questions about it in concise spoken-friendly prose (short paragraphs, no markdown tables or heavy lists). Match the user's language. Reference the page naturally; do not dump it back. Never emit tool_call markup, function-call JSON, XML tool tags, or special tokens such as ]<]minimax[> — answer in plain natural language only.",
+          "bookVoiceUser": "## Book & page\n{{source}}\n\n## Current page content\n---\n{{pageText}}\n---\n\n## Dialogue so far\n{{history}}\n\n## User's new message\n{{request}}"
         }
       },
       "lab": {
@@ -490,7 +495,10 @@ const resources = {
         "mic_denied": "未获得麦克风权限，请允许后重试。",
         "asr_error": "语音识别失败：{{message}}",
         "tts_error": "语音合成失败：{{message}}",
-        "ai_error": "语音写作 AI 失败：{{message}}"
+        "ai_error": "语音写作 AI 失败：{{message}}",
+        "book_chat_start": "就本页与 AI 语音讨论",
+        "book_chat_stop": "停止语音讨论",
+        "book_chat_title": "语音讨论"
       },
       "nodes": {
         "theme": "核心主题",
@@ -700,7 +708,9 @@ const resources = {
           "threadFollowUp": "你正在画布上延续一段对话。助手上一轮回复如下：\n\n---\n{{previous}}\n---\n\n用户的新消息：\n{{request}}\n\n请承接上文，直接回应这条追问；语气与深度与之前保持一致，除非用户另有要求。",
           "agentThreadContextMissing": "（首轮分析的原始便签不可用或已删除，请仅依据下列对话与当前追问作答。）",
           "agentThreadFollowUp": "你正在延续画布上某一 Agent 人格的对话线程。\n\n## 原始材料（与首次分析时相同的那份正文）\n\n---\n{{initialContext}}\n---\n\n## 已发生的对话（从旧到新）\n\n{{dialogueHistory}}\n\n## 用户本条消息\n\n{{request}}\n\n请直接接着谈：保持该 Agent 人设与深度；需要时请回扣原始材料。",
-          "voiceWritingPersona": "你是冷静的语音写作搭档。用户正在口述想法。请用适合朗读的简洁散文回复（短段落，避免表格与过重列表）。帮助对方澄清、深入并继续思考。与用户使用同一语言。除非用户问起，否则不要提及画布、便签、卡片或产品界面。禁止输出 tool_call、函数调用 JSON、XML 工具标签，或 ]<]minimax[> 之类特殊标记——只用自然语言回答。"
+          "voiceWritingPersona": "你是冷静的语音写作搭档。用户正在口述想法。请用适合朗读的简洁散文回复（短段落，避免表格与过重列表）。帮助对方澄清、深入并继续思考。与用户使用同一语言。除非用户问起，否则不要提及画布、便签、卡片或产品界面。禁止输出 tool_call、函数调用 JSON、XML 工具标签，或 ]<]minimax[> 之类特殊标记——只用自然语言回答。",
+          "bookVoicePersona": "你是一位体贴的阅读搭档，正通过语音与用户讨论其正在阅读的书籍页面。你能看到下方提供的页面内容。请用适合朗读的简洁散文（短段落，避免表格与过重列表）讨论、讲解并回答相关问题。与用户使用同一语言。自然地引用页面内容，不要原样复述。禁止输出 tool_call、函数调用 JSON、XML 工具标签，或 ]<]minimax[> 之类特殊标记——只用自然语言回答。",
+          "bookVoiceUser": "## 书籍与页码\n{{source}}\n\n## 当前页面内容\n---\n{{pageText}}\n---\n\n## 已发生的对话\n{{history}}\n\n## 用户的新消息\n{{request}}"
         }
       },
       "lab": {

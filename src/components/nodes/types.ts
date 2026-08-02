@@ -1,4 +1,5 @@
 import type { AgentConfig, CanvasNode } from '../../db';
+import type { AIConfig } from '../AISettingsModal';
 
 export interface NodeContentProps {
   node: CanvasNode;
@@ -50,4 +51,8 @@ export interface BookNodeProps extends NodeContentProps {
   /** Expand selected text into a theme hub + linked note cards. */
   onExpandSelection?: (quote: string, sourceLabel?: string) => void;
   isExpanding?: boolean;
+  /** AI config (provider + ASR/TTS keys) for the voice chat feature. */
+  aiConfig?: AIConfig;
+  /** Disable the voice chat button (e.g. when canvas voice mode is active). */
+  voiceChatDisabled?: boolean;
 }

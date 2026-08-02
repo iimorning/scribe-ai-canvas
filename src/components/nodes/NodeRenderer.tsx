@@ -1,5 +1,6 @@
 import React from 'react';
 import type { AgentConfig, CanvasNode } from '../../db';
+import type { AIConfig } from '../AISettingsModal';
 import { ThemeNode } from './ThemeNode';
 import { NoteNode } from './NoteNode';
 import { AiNode } from './AiNode';
@@ -33,6 +34,8 @@ interface NodeRendererProps {
   expandingBookNodeId?: string | null;
   bookExpandBranchCount?: number;
   onToggleBookExpandBranches?: (hubId: string) => void;
+  aiConfig?: AIConfig;
+  bookVoiceChatDisabled?: boolean;
 }
 
 export function NodeRenderer({
@@ -57,6 +60,8 @@ export function NodeRenderer({
   expandingBookNodeId,
   bookExpandBranchCount,
   onToggleBookExpandBranches,
+  aiConfig,
+  bookVoiceChatDisabled,
 }: NodeRendererProps) {
   switch (node.type) {
     case 'theme':
@@ -120,6 +125,8 @@ export function NodeRenderer({
           onAskAboutSelection={onAskAboutBookSelection}
           onExpandSelection={onExpandBookSelection}
           isExpanding={expandingBookNodeId === node.id}
+          aiConfig={aiConfig}
+          voiceChatDisabled={bookVoiceChatDisabled}
         />
       );
     case 'agent':

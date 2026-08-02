@@ -923,6 +923,8 @@ export default function App() {
                       void expandBookSelection(node.id, quote, sourceLabel);
                     }}
                     expandingBookNodeId={expandingBookNodeId}
+                    aiConfig={aiConfig}
+                    bookVoiceChatDisabled={voiceModeActive}
                   />
                 </DraggableNode>
               );
