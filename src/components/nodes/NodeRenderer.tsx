@@ -22,6 +22,9 @@ interface NodeRendererProps {
   followUpLoadingNodeId?: string | null;
   streamingAiNodeId?: string | null;
   isFollowUpGloballyDisabled?: boolean;
+  webSearchSourceCount?: number;
+  webSearchSourcesCollapsed?: boolean;
+  onToggleWebSearchSources?: (nodeId: string) => void;
 }
 
 export function NodeRenderer({
@@ -36,6 +39,9 @@ export function NodeRenderer({
   followUpLoadingNodeId,
   streamingAiNodeId,
   isFollowUpGloballyDisabled,
+  webSearchSourceCount,
+  webSearchSourcesCollapsed,
+  onToggleWebSearchSources,
 }: NodeRendererProps) {
   switch (node.type) {
     case 'theme':
@@ -59,6 +65,11 @@ export function NodeRenderer({
           isFollowUpLoading={followUpLoadingNodeId === node.id}
           isContentStreaming={streamingAiNodeId === node.id}
           isFollowUpDisabled={isFollowUpGloballyDisabled}
+          webSearchSourceCount={webSearchSourceCount}
+          webSearchSourcesCollapsed={webSearchSourcesCollapsed}
+          onToggleWebSearchSources={
+            onToggleWebSearchSources ? () => onToggleWebSearchSources(node.id) : undefined
+          }
         />
       );
     case 'image':

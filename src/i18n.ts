@@ -92,7 +92,11 @@ const resources = {
         "search_no_metaso_key": "Add a Metaso Search API key in Settings to use “web search” in the AI follow-up box.",
         "search_need_text": "No query: add keywords after “web search”, or ensure the AI reply above has a usable first line.",
         "search_no_results": "No web results for that query.",
-        "search_failed": "Web search failed. Check the Metaso key and network."
+        "search_failed": "Web search failed. Check the Metaso key and network.",
+        "collapse_web_sources": "Stack source cards like a photo pile",
+        "expand_web_sources": "Expand source cards into a vertical lane",
+        "collapse_web_sources_short": "Stack",
+        "expand_web_sources_short": "Expand"
       },
       "settings": {
         "title": "Settings",
@@ -447,7 +451,11 @@ const resources = {
         "search_no_metaso_key": "请先在设置中填写秘塔搜索 API Key，才能在 AI 追问中输入「联网搜索」或使用研究实验室检索。",
         "search_need_text": "缺少检索词：可在「联网搜索」后写上关键词，或确保上方 AI 回复首行有可用内容。",
         "search_no_results": "没有搜到相关网页结果。",
-        "search_failed": "联网搜索失败，请检查秘塔 Key 与网络。"
+        "search_failed": "联网搜索失败，请检查秘塔 Key 与网络。",
+        "collapse_web_sources": "将来源卡片叠成一摞（像相片）",
+        "expand_web_sources": "展开来源卡片为纵向列表",
+        "collapse_web_sources_short": "叠放",
+        "expand_web_sources_short": "展开"
       },
       "settings": {
         "title": "设置",

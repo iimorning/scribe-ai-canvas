@@ -43,6 +43,13 @@ import {
   parseStickyClipboardPayload,
   stickyPastePosition,
 } from './utils/noteClipboard';
+import {
+  listWebSearchSourcesForParent,
+  setWebSearchSourcesCollapsed,
+  sourceStackTiltDeg,
+  sourceStackZIndex,
+  webSearchSourceIndex,
+} from './services/spawnWebSearchNoteCards';
 /** 控制台执行 localStorage.setItem('SCRIBE_DEBUG_DND','1') 并刷新；桌面打包版也可用（不设 DEV 门槛）。 */
 const DEBUG_DND =
   typeof localStorage !== 'undefined' &&
@@ -382,6 +389,33 @@ export default function App() {
     isAnyAiBusy,
   });
 
+  const webSearchSourceCountByParent = React.useMemo(() => {
+    const map = new Map<string, number>();
+    for (const node of dynamicNodes) {
+      if (node.type !== 'ai') continue;
+      const count = listWebSearchSourcesForParent(node.id, dynamicNodes, edges).length;
+      if (count > 0) map.set(node.id, count);
+    }
+    return map;
+  }, [dynamicNodes, edges]);
+
+  const toggleWebSearchSources = useCallback(
+    (parentId: string) => {
+      const parent = dynamicNodes.find((n) => n.id === parentId);
+      if (!parent) return;
+      const el = nodesRef.current[parentId];
+      const anchorHeight = parent.height && parent.height > 0
+        ? parent.height
+        : el?.offsetHeight || undefined;
+      void setWebSearchSourcesCollapsed(parentId, !parent.webSearchSourcesCollapsed, {
+        nodes: dynamicNodes,
+        edges,
+        anchorHeight,
+      });
+    },
+    [dynamicNodes, edges, nodesRef],
+  );
+
   const runAgentAnalysisFromCard = (agentNodeId: string) => {
     if (isAnyAiBusy) return;
     const agentNode = dynamicNodes.find(n => n.id === agentNodeId && n.type === 'agent');
@@ -576,12 +610,27 @@ export default function App() {
             <div className="absolute inset-0 z-30 w-[1px] h-[1px] pointer-events-none"> 
               {/* All Nodes from Database */}
               {dynamicNodes.map((node) => {
-                const rotation = 
+                const stackedParentId =
+                  node.webSearchParentId ||
+                  ((node.type === 'text' || node.type === 'note') && node.layout === 2
+                    ? edges.find((e) => e.to === node.id)?.from
+                    : undefined);
+                const stackedParent = stackedParentId
+                  ? dynamicNodes.find((n) => n.id === stackedParentId && n.type === 'ai')
+                  : undefined;
+                const stacked =
+                  !!stackedParent?.webSearchSourcesCollapsed &&
+                  webSearchSourceCountByParent.has(stackedParent.id);
+
+                let rotation =
                   (node.type === 'note' || node.type === 'text') ? (node.layout === 0 || node.layout === undefined ? 1 : 0) :
                   (node.type === 'theme') ? (node.layout === 0 || node.layout === undefined ? -1 : 0) :
                   (node.type === 'image') ? -1 :
                   (node.type === 'video') ? 1 :
                   (node.type === 'document') ? 1 : 0;
+                if (stacked) {
+                  rotation = sourceStackTiltDeg(webSearchSourceIndex(node));
+                }
 
                 return (
                   <DraggableNode 
@@ -591,6 +640,7 @@ export default function App() {
                     initialWidth={node.width} initialHeight={node.height}
                     onDelete={() => removeNodeId(node.id)} scale={canvasTransform.scale}
                     rotation={rotation}
+                    zIndexOverride={stacked ? sourceStackZIndex(webSearchSourceIndex(node)) : undefined}
                     onCycleLayout={
                       nodeSupportsCycleLayout(node.type)
                         ? () => {
@@ -632,6 +682,9 @@ export default function App() {
                     followUpLoadingNodeId={followUpParentId}
                     streamingAiNodeId={streamingAiNodeId}
                     isFollowUpGloballyDisabled={isAnyAiBusy}
+                    webSearchSourceCount={webSearchSourceCountByParent.get(node.id) ?? 0}
+                    webSearchSourcesCollapsed={!!node.webSearchSourcesCollapsed}
+                    onToggleWebSearchSources={toggleWebSearchSources}
                   />
                 </DraggableNode>
               );

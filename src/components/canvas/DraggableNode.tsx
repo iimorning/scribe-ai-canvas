@@ -27,6 +27,8 @@ export interface DraggableNodeProps {
   initialWidth?: number;
   initialHeight?: number;
   rotation?: number;
+  /** When set, overrides drag-managed z-index (e.g. neat web-search photo stack). */
+  zIndexOverride?: number;
   /** When set (glass note layout), palette does not paint an opaque layer on this root so `backdrop-filter` on the card can sample the canvas. */
   glassSurface?: boolean;
   /** Note/text: card body pointer sets which node Ctrl+C duplicates (not from checkbox). */
@@ -39,6 +41,7 @@ export const DraggableNode: React.FC<DraggableNodeProps> = ({
   onDelete, onCycleLayout, className = '', scale = 1, 
   isSelected, isEditing, onToggleSelect, allowPalette, onDragEnd, onResizeEnd,
   rotation = 0,
+  zIndexOverride,
   glassSurface = false,
   onStickyActivate,
 }) => {
@@ -77,7 +80,7 @@ export const DraggableNode: React.FC<DraggableNodeProps> = ({
         top: node.pos.y, 
         width: size.width || undefined,
         height: size.height || undefined,
-        zIndex: node.zIndex,
+        zIndex: zIndexOverride ?? node.zIndex,
         ...(rotation ? { transform: `rotate(${rotation}deg)` } : {}),
         '--node-bg': styleOverrides.bg || undefined, 
         '--node-text': styleOverrides.text || undefined, 

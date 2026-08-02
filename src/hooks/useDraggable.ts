@@ -7,12 +7,20 @@ export function useDraggable(initialX: number, initialY: number, scale: number =
   const [zIndex, setZIndex] = useState(maxZIndex);
   const scaleRef = useRef(scale);
   const posRef = useRef(pos);
+  const draggingRef = useRef(false);
   scaleRef.current = scale;
   
   // Keep posRef up to date so we can send the latest pos on up
   useEffect(() => {
      posRef.current = pos;
   }, [pos]);
+
+  // Follow Dexie-driven moves (e.g. web-search source collapse/expand) without
+  // fighting an in-progress drag.
+  useEffect(() => {
+    if (draggingRef.current) return;
+    setPos((prev) => (prev.x === initialX && prev.y === initialY ? prev : { x: initialX, y: initialY }));
+  }, [initialX, initialY]);
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     // Middle button is reserved for canvas panning.
@@ -29,6 +37,7 @@ export function useDraggable(initialX: number, initialY: number, scale: number =
       return;
     }
     
+    draggingRef.current = true;
     maxZIndex += 1;
     setZIndex(maxZIndex); 
     
@@ -46,6 +55,7 @@ export function useDraggable(initialX: number, initialY: number, scale: number =
     const onPointerUp = () => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
+      draggingRef.current = false;
       if (onDragEnd) {
         // use a small timeout to let state settle
         setTimeout(() => {

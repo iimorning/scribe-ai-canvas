@@ -20,4 +20,8 @@ export interface AiNodeProps extends NodeContentProps {
   isFollowUpDisabled?: boolean;
   /** While model output is streaming into this card, render plain text (not Markdown). */
   isContentStreaming?: boolean;
+  /** Linked web-search source cards exist beside this answer. */
+  webSearchSourceCount?: number;
+  webSearchSourcesCollapsed?: boolean;
+  onToggleWebSearchSources?: () => void;
 }

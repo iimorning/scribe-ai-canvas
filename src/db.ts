@@ -25,6 +25,12 @@ export interface CanvasNode {
   threadAgentConfigId?: string;
   /** Agent 分析链：首轮附带的多模态图片节点 id（便签/Agent 邻接 image）；子卡从父卡复制 */
   threadContextImageNodeIds?: string[];
+  /** AI 卡：联网搜索来源卡是否叠放收起 */
+  webSearchSourcesCollapsed?: boolean;
+  /** 文本卡：所属联网搜索回答卡 id（来源卡标记） */
+  webSearchParentId?: string;
+  /** 文本卡：在来源列中的顺序（0-based） */
+  webSearchIndex?: number;
 }
 
 export interface Canvas {
