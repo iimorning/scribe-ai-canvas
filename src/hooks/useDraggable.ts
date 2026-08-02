@@ -28,6 +28,7 @@ export function useDraggable(initialX: number, initialY: number, scale: number =
     const target = e.target as HTMLElement;
     if (
       target.isContentEditable ||
+      target.closest('[contenteditable="true"]') ||
       target.tagName === 'BUTTON' ||
       target.tagName === 'INPUT' ||
       target.tagName === 'TEXTAREA' ||

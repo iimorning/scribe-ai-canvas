@@ -97,7 +97,7 @@ describe('NoteBody', () => {
     expect(preview.querySelectorAll('br').length).toBeGreaterThanOrEqual(2);
   });
 
-  it('从编辑切到预览后，预览区的内容只渲染一次（不出现「编辑残留 + Markdown」两份）', () => {
+  it('从编辑切到预览后，预览区只剩 Markdown（编辑用 contentEditable 已卸载）', () => {
     const setEditing = vi.fn();
 
     function Harness({ editingId, content }: { editingId: string | null; content: string }) {
@@ -113,18 +113,17 @@ describe('NoteBody', () => {
       );
     }
 
-    const typed = '我是一树一树的花开';
+    const typed = 'unique-note-body-preview-once';
     const { container, rerender } = render(<Harness editingId="n1" content={typed} />);
-    const editable = container.querySelector('[contenteditable="true"]') as HTMLElement;
-    expect(editable).toBeTruthy();
+    expect(container.querySelector('[contenteditable="true"]')).toBeTruthy();
 
     rerender(<Harness editingId={null} content={typed} />);
 
     expect(container.querySelector('[contenteditable="true"]')).toBeNull();
     const preview = container.querySelector('.cursor-text') as HTMLElement;
     expect(preview).toBeTruthy();
-    const occurrences = (preview.textContent ?? '').split(typed).length - 1;
-    expect(occurrences).toBe(1);
+    expect(preview.textContent ?? '').toContain(typed);
+    expect((preview.textContent ?? '').split(typed).length - 1).toBe(1);
   });
 
   it('编辑态显式设置 white-space: pre-wrap（避免 node.content 里的 \\n 在 contentEditable 中被折叠成空格）', () => {
@@ -174,13 +173,13 @@ describe('NoteBody', () => {
     expect(preview.textContent ?? '').toContain('lines');
   });
 
-  it('受控写法：父组件同次编辑期间重渲染时，编辑区 DOM 仍展示 node.content（React 不会反向覆盖、也不会出现两份）', () => {
-    function Harness({ flag }: { flag: number }) {
+  it('非受控编辑：父组件重渲染或 props.content 变化时，不覆盖用户已输入的内容（避免光标乱跳/重复字）', () => {
+    function Harness({ flag, content }: { flag: number; content: string }) {
       return (
         <div>
           <span data-testid="flag">{flag}</span>
           <NoteBody
-            node={{ ...baseNode, content: 'hello' }}
+            node={{ ...baseNode, content }}
             editingNodeId="n1"
             setEditingNodeId={vi.fn()}
             editClassName="edit"
@@ -191,13 +190,15 @@ describe('NoteBody', () => {
       );
     }
 
-    const { container, rerender } = render(<Harness flag={0} />);
+    const { container, rerender } = render(<Harness flag={0} content="hello" />);
     const editable = container.querySelector('[contenteditable="true"]') as HTMLElement;
     expect(editable.textContent).toBe('hello');
+    editable.textContent = 'hello typed';
 
-    rerender(<Harness flag={1} />);
+    rerender(<Harness flag={1} content="hello from asr" />);
 
     const editableAfter = container.querySelector('[contenteditable="true"]') as HTMLElement;
-    expect(editableAfter.textContent).toBe('hello');
+    expect(editableAfter.textContent).toBe('hello typed');
   });
 });
+

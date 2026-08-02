@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Markdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import { db } from '../../../db';
@@ -19,6 +19,11 @@ export interface NoteBodyProps {
   scrollAreaClassName?: string;
 }
 
+/**
+ * View: live DB content (ASR can update freely).
+ * Edit: uncontrolled contentEditable — seed once on enter, save only on blur.
+ * Never push props into the editor while typing (that resets the caret).
+ */
 export function NoteBody({
   node,
   editingNodeId,
@@ -30,28 +35,42 @@ export function NoteBody({
 }: NoteBodyProps) {
   const isEditing = editingNodeId === node.id;
   const editRef = useRef<HTMLDivElement>(null);
+  const seededForEditRef = useRef(false);
 
-  /** 乐观值：onBlur 写库后立即生效，避开 db.nodes.update -> useLiveQuery 异步刷新之间的"老内容闪一下"间隙；
-   *  当 props 上的 node.content 与乐观值一致（即 IndexedDB 已同步回组件），自动清空 */
+  /** 乐观值：blur 写库后立刻显示，避开 liveQuery 异步刷新的空档闪烁 */
   const [pendingContent, setPendingContent] = useState<string | null>(null);
+  const blurBaselineRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (pendingContent !== null && pendingContent === node.content) {
+    if (pendingContent === null) return;
+    if (node.content === pendingContent) {
       setPendingContent(null);
+      blurBaselineRef.current = null;
+      return;
+    }
+    // Content moved away from both baseline and pending → external write (ASR etc.)
+    const baseline = blurBaselineRef.current;
+    if (baseline !== null && node.content !== baseline && node.content !== pendingContent) {
+      setPendingContent(null);
+      blurBaselineRef.current = null;
     }
   }, [node.content, pendingContent]);
 
-  // contentEditable keeps its own DOM; React children updates are ignored after mount.
-  // Voice ASR (and other external writers) update IndexedDB → liveQuery → node.content;
-  // sync that into the editor so transcripts appear while the note is focused.
-  useEffect(() => {
-    if (!isEditing) return;
+  // Seed + focus once when entering edit (layout phase so first paint already has text).
+  useLayoutEffect(() => {
+    if (!isEditing) {
+      seededForEditRef.current = false;
+      return;
+    }
+    if (seededForEditRef.current) return;
     const el = editRef.current;
     if (!el) return;
-    const next = node.content ?? '';
-    if (el.innerText !== next) {
-      el.innerText = next;
-    }
-  }, [isEditing, node.content]);
+    // textContent: jsdom's innerText is unreliable; browsers treat both fine for plain notes.
+    el.textContent = node.content ?? '';
+    seededForEditRef.current = true;
+    el.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed from content at edit-enter only
+  }, [isEditing, node.id]);
 
   const displayContent = pendingContent ?? node.content;
 
@@ -59,26 +78,28 @@ export function NoteBody({
     <div className={scrollAreaClassName} {...{ [CANVAS_NODE_CONTEXT_TEXT_ATTR]: '' }}>
       {isEditing ? (
         <div
+          key="note-edit"
           ref={editRef}
-          autoFocus
           className={editClassName}
           contentEditable
           suppressContentEditableWarning
-          /** white-space: pre-wrap 保证 node.content 里的 \n 在编辑区视觉上换行；否则 HTML 默认会把 \n 折叠成空格 */
           style={{ whiteSpace: 'pre-wrap' }}
           onBlur={(e) => {
-            const next = e.currentTarget.innerText;
+            const next = e.currentTarget.innerText ?? e.currentTarget.textContent ?? '';
             if (!isContentBlurPersistenceDisabled()) {
-              db.nodes.update(node.id, { content: next });
+              blurBaselineRef.current = node.content ?? '';
+              void db.nodes.update(node.id, { content: next });
               setPendingContent(next);
             }
             setEditingNodeId(null);
           }}
-        >
-          {node.content}
-        </div>
+        />
       ) : (
-        <div onClick={() => setEditingNodeId(node.id)} className={`cursor-text min-h-[50px] ${viewClassName}`}>
+        <div
+          key="note-view"
+          onClick={() => setEditingNodeId(node.id)}
+          className={`cursor-text min-h-[50px] ${viewClassName}`}
+        >
           <Markdown remarkPlugins={NOTE_REMARK_PLUGINS}>{displayContent || emptyNoteMarkdown}</Markdown>
         </div>
       )}

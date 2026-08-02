@@ -19,7 +19,6 @@ const hasVolcAsrCredentials = vi.fn(() => true);
 const enterFullscreenMock = vi.fn();
 const exitFullscreenMock = vi.fn();
 const setStreamingAiNodeIdMock = vi.fn();
-const setEditingNodeIdMock = vi.fn();
 const setCanvasTransformMock = vi.fn();
 
 const callUniversalAIMock = vi.fn(async () => 'AI reply');
@@ -36,6 +35,7 @@ vi.mock('../../src/db', () => ({
     nodes: {
       add: vi.fn(async (n: { id: string }) => n.id),
       update: vi.fn(async () => undefined),
+      get: vi.fn(async () => undefined),
     },
     edges: {
       add: vi.fn(async (e: { id: string }) => e.id),
@@ -76,7 +76,6 @@ beforeEach(() => {
   enterFullscreenMock.mockClear();
   exitFullscreenMock.mockClear();
   setStreamingAiNodeIdMock.mockClear();
-  setEditingNodeIdMock.mockClear();
   setCanvasTransformMock.mockClear();
   callUniversalAIMock.mockClear();
 });
@@ -97,7 +96,7 @@ async function renderVoiceHook() {
         activeCanvasId: 'c1',
         transformRef: { current: { x: 0, y: 0, scale: 1 } } as any,
         setCanvasTransform: setCanvasTransformMock,
-        setEditingNodeId: setEditingNodeIdMock,
+        editingNodeId: null,
         setStreamingAiNodeId: setStreamingAiNodeIdMock,
         enterFullscreen: enterFullscreenMock,
         exitFullscreen: exitFullscreenMock,

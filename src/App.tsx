@@ -382,7 +382,7 @@ export default function App() {
     activeCanvasId,
     transformRef,
     setCanvasTransform,
-    setEditingNodeId,
+    editingNodeId,
     setStreamingAiNodeId,
     enterFullscreen,
     exitFullscreen,

@@ -28,7 +28,8 @@ type UseVoiceWritingModeParams = {
   activeCanvasId: string;
   transformRef: RefObject<CanvasTransform>;
   setCanvasTransform: Dispatch<SetStateAction<CanvasTransform>>;
-  setEditingNodeId: (id: string | null) => void;
+  /** When the user is typing in a note, ASR must not overwrite that note. */
+  editingNodeId: string | null;
   setStreamingAiNodeId: (id: string | null) => void;
   enterFullscreen: () => void;
   exitFullscreen: () => void;
@@ -40,7 +41,7 @@ export function useVoiceWritingMode({
   activeCanvasId,
   transformRef,
   setCanvasTransform,
-  setEditingNodeId,
+  editingNodeId,
   setStreamingAiNodeId,
   enterFullscreen,
   exitFullscreen,
@@ -64,6 +65,8 @@ export function useVoiceWritingMode({
   const pausedListeningRef = useRef(false);
   const latestTranscriptRef = useRef('');
   const voicePhaseRef = useRef<VoicePhase>('idle');
+  const editingNodeIdRef = useRef<string | null>(editingNodeId);
+  editingNodeIdRef.current = editingNodeId;
   /** Assigned while a listening session is live; mic toggle calls this to commit the turn. */
   const finishListeningRoundRef = useRef<(() => void) | null>(null);
   // Synchronous gate: voiceModeActive is React state and lags behind ref writes by one tick,
@@ -166,6 +169,11 @@ export function useVoiceWritingMode({
       if (!next || next === latestTranscriptRef.current) return;
       latestTranscriptRef.current = next;
       const id = currentUserNoteIdRef.current;
+      // User clicked into the note to type — keep ASR for mic UX but don't clobber the editor.
+      if (id && editingNodeIdRef.current === id) {
+        console.log('[Spoor Voice] transcript skipped (user editing)', { id });
+        return;
+      }
       console.log('[Spoor Voice] transcript → db.update', { id, next });
       if (id) void db.nodes.update(id, { content: next });
     };
@@ -187,13 +195,23 @@ export function useVoiceWritingMode({
     finishListeningRoundRef.current = () => {
       if (!activeRef.current || handlingUtteranceRef.current) return;
       if (voicePhaseRef.current !== 'listening') return;
-      const text = latestTranscriptRef.current.trim();
-      if (!text) {
-        // Nothing spoken — treat mic-off as exiting voice mode.
-        stopVoiceMode();
-        return;
-      }
-      commitUtterance(text);
+      const id = currentUserNoteIdRef.current;
+      void (async () => {
+        // Flush uncontrolled contentEditable → db before reading the note.
+        const ae = document.activeElement;
+        if (ae instanceof HTMLElement && ae.isContentEditable) {
+          ae.blur();
+          await Promise.resolve();
+        }
+        const row = id ? await db.nodes.get(id) : undefined;
+        const text = (row?.content ?? latestTranscriptRef.current).trim();
+        if (!text) {
+          // Nothing spoken — treat mic-off as exiting voice mode.
+          stopVoiceMode();
+          return;
+        }
+        commitUtterance(text);
+      })();
     };
 
     const session = await openVolcAsrSession(creds, {
@@ -420,7 +438,6 @@ export function useVoiceWritingMode({
         });
       }
       currentUserNoteIdRef.current = nextUserId;
-      setEditingNodeId(nextUserId);
       focusNode(nextPos.x, nextPos.y);
       await startListeningLoop();
     }
@@ -431,7 +448,6 @@ export function useVoiceWritingMode({
     exitFullscreen,
     focusNode,
     rollbackOnStartFailure,
-    setEditingNodeId,
     setStreamingAiNodeId,
     stopVoiceMode,
     t,
@@ -480,7 +496,6 @@ export function useVoiceWritingMode({
       });
       currentUserNoteIdRef.current = userNoteId;
       originRef.current = { x, y };
-      setEditingNodeId(userNoteId);
       focusNode(x, y);
 
       try {
@@ -500,7 +515,6 @@ export function useVoiceWritingMode({
     focusNode,
     isAnyAiBusy,
     rollbackOnStartFailure,
-    setEditingNodeId,
     startListeningLoop,
     t,
     transformRef,
