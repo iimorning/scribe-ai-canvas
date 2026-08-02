@@ -6,12 +6,14 @@ import type { CanvasTransform } from './useCanvasInteraction';
 import { callUniversalAI, formatAiError, maskApiKeyForLog } from '../services/ai';
 import { metasoSearch, resolveMetasoImageUrl } from '../services/search';
 import { deriveNoteSearchQueries } from '../services/deriveNoteSearchQueries';
+import { pickNoteSearchAvHits } from '../services/pickNoteSearchMediaHits';
 import {
   deriveSearchQueryFromNoteText,
   spawnWebSearchCardsFromImages,
+  spawnWebSearchCardsFromMedia,
   spawnWebSearchCardsFromPages,
 } from '../services/spawnWebSearchNoteCards';
-import { parseThreadWebSearchIntent } from '../utils/webSearchCommand';
+import { parseThreadWebSearchIntent, type WebSearchKind } from '../utils/webSearchCommand';
 import { shouldPreflightToolbarIntent } from '../utils/toolbarIntentGate';
 import { analyzeToolbarIntentPreflight } from '../services/toolbarIntentClarification';
 import { getCanvasCenterPosition } from '../utils/canvas';
@@ -226,7 +228,8 @@ export function useAiActions({
   const clearPendingQuote = () => setPendingQuote(null);
 
   /**
-   * Note chrome: AI-derive a topic, then search images only (no webpage cards).
+   * Note chrome: AI-derive a topic, then search images plus video/podcast
+   * (video+podcast combined ≤3; images keep their own count).
    */
   const searchNoteWithMedia = async (noteNodeId: string) => {
     if (noteSearchGuardRef.current || isAnyAiBusy) return;
@@ -251,33 +254,55 @@ export function useAiActions({
     try {
       const queries = await deriveNoteSearchQueries(noteText, aiConfig, t);
       const imageQuery = queries?.imageQuery || queries?.webQuery || '';
-      if (!imageQuery) {
+      const mediaQuery = queries?.webQuery || queries?.imageQuery || imageQuery;
+      if (!imageQuery && !mediaQuery) {
         void appAlert({ message: t('nodes.search_need_note_text') });
         return;
       }
 
-      const imgRes = await metasoSearch(imageQuery, { apiKey: key, scope: 'image', size: 6 });
+      const [imgRes, videoRes, podcastRes] = await Promise.all([
+        metasoSearch(imageQuery || mediaQuery, { apiKey: key, scope: 'image', size: 6 }),
+        metasoSearch(mediaQuery || imageQuery, { apiKey: key, scope: 'video', size: 3 }),
+        metasoSearch(mediaQuery || imageQuery, { apiKey: key, scope: 'podcast', size: 3 }),
+      ]);
+
       const images = (imgRes.images ?? []).filter((img) => resolveMetasoImageUrl(img));
-      if (images.length === 0) {
-        void appAlert({ message: t('nodes.search_no_images') });
+      const avHits = pickNoteSearchAvHits(videoRes.videos ?? [], podcastRes.podcasts ?? []);
+      if (images.length === 0 && avHits.length === 0) {
+        void appAlert({ message: t('nodes.search_no_media') });
         return;
       }
 
       const el = nodesRef.current[noteNodeId];
       const noteH = note.height && note.height > 0 ? note.height : el?.offsetHeight ?? 200;
+      const base = { x: note.x, y: note.y };
+      const videos = avHits.filter((h) => h.kind === 'video').map((h) => h.item);
+      const podcasts = avHits.filter((h) => h.kind === 'podcast').map((h) => h.item);
 
-      // Link image cards directly from the note (no intermediate AI ack card).
-      await spawnWebSearchCardsFromImages(
-        noteNodeId,
-        { x: note.x, y: note.y },
-        images,
-        activeCanvasId,
-        {
+      // Link media cards directly from the note (no intermediate AI ack card).
+      if (images.length > 0) {
+        await spawnWebSearchCardsFromImages(noteNodeId, base, images, activeCanvasId, {
           anchorHeight: noteH,
           laneCount: images.length,
           staggerMs: 160,
-        },
-      );
+        });
+      }
+      if (videos.length > 0) {
+        await spawnWebSearchCardsFromMedia(noteNodeId, base, videos, activeCanvasId, 'video', {
+          anchorHeight: noteH,
+          indexOffset: 0,
+          laneCount: avHits.length,
+          staggerMs: 160,
+        });
+      }
+      if (podcasts.length > 0) {
+        await spawnWebSearchCardsFromMedia(noteNodeId, base, podcasts, activeCanvasId, 'podcast', {
+          anchorHeight: noteH,
+          indexOffset: videos.length,
+          laneCount: avHits.length,
+          staggerMs: 160,
+        });
+      }
     } catch (e) {
       const msg = formatAiError(e);
       console.error('[Spoor] searchNoteWithMedia failed', { error: msg });
@@ -521,29 +546,43 @@ export function useAiActions({
       followUpGuardRef.current = true;
       setFollowUpParentId(parentNodeId);
       try {
-        const isImage = searchIntent.kind === 'image';
+        const kind: WebSearchKind = searchIntent.kind;
         let query = searchIntent.explicitQuery.trim();
         if (!query) {
           const derived = await deriveNoteSearchQueries(previous, aiConfig, t);
-          query = isImage
-            ? derived?.imageQuery || derived?.webQuery || ''
-            : derived?.webQuery || derived?.imageQuery || '';
+          query =
+            kind === 'image'
+              ? derived?.imageQuery || derived?.webQuery || ''
+              : derived?.webQuery || derived?.imageQuery || '';
         }
         if (!query) {
           void appAlert({ message: t('nodes.search_need_text') });
           return;
         }
 
-        const res = await metasoSearch(query, {
-          apiKey: key,
-          scope: isImage ? 'image' : 'webpage',
-        });
+        const res = await metasoSearch(query, { apiKey: key, scope: kind });
         const pages = res.webpages ?? [];
         const images = res.images ?? [];
-        const hitCount = isImage ? images.length : pages.length;
+        const videos = res.videos ?? [];
+        const podcasts = res.podcasts ?? [];
+        const hitCount =
+          kind === 'image'
+            ? images.length
+            : kind === 'video'
+              ? videos.length
+              : kind === 'podcast'
+                ? podcasts.length
+                : pages.length;
         if (hitCount === 0) {
           void appAlert({
-            message: isImage ? t('nodes.search_no_images') : t('nodes.search_no_results'),
+            message:
+              kind === 'image'
+                ? t('nodes.search_no_images')
+                : kind === 'video'
+                  ? t('nodes.search_no_videos')
+                  : kind === 'podcast'
+                    ? t('nodes.search_no_podcasts')
+                    : t('nodes.search_no_results'),
           });
           return;
         }
@@ -553,13 +592,21 @@ export function useAiActions({
         const w = parent.width && parent.width > 0 ? parent.width : el?.offsetWidth ?? 320;
         const childY = parent.y + h + THREAD_GAP;
         const newNodeId = crypto.randomUUID();
+        const ack =
+          kind === 'image'
+            ? t('nodes.search_image_follow_up_ack')
+            : kind === 'video'
+              ? t('nodes.search_video_follow_up_ack')
+              : kind === 'podcast'
+                ? t('nodes.search_podcast_follow_up_ack')
+                : t('nodes.search_follow_up_ack');
 
         await db.nodes.add({
           id: newNodeId,
           canvasId: activeCanvasId,
           type: 'ai',
           userTurn: trimmed,
-          content: isImage ? t('nodes.search_image_follow_up_ack') : t('nodes.search_follow_up_ack'),
+          content: ack,
           x: parent.x,
           y: childY,
           width: w,
@@ -579,12 +626,21 @@ export function useAiActions({
           from: parentNodeId,
           to: newNodeId,
         });
-        if (isImage) {
-          await spawnWebSearchCardsFromImages(newNodeId, { x: parent.x, y: childY }, images, activeCanvasId, {
+        const spawnBase = { x: parent.x, y: childY };
+        if (kind === 'image') {
+          await spawnWebSearchCardsFromImages(newNodeId, spawnBase, images, activeCanvasId, {
+            anchorHeight: h,
+          });
+        } else if (kind === 'video') {
+          await spawnWebSearchCardsFromMedia(newNodeId, spawnBase, videos, activeCanvasId, 'video', {
+            anchorHeight: h,
+          });
+        } else if (kind === 'podcast') {
+          await spawnWebSearchCardsFromMedia(newNodeId, spawnBase, podcasts, activeCanvasId, 'podcast', {
             anchorHeight: h,
           });
         } else {
-          await spawnWebSearchCardsFromPages(newNodeId, { x: parent.x, y: childY }, pages, activeCanvasId, {
+          await spawnWebSearchCardsFromPages(newNodeId, spawnBase, pages, activeCanvasId, {
             // Center the source lane on the new answer card; fall back to measured parent height
             // when the fresh node has not laid out yet.
             anchorHeight: h,

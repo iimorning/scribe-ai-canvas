@@ -137,7 +137,7 @@ async fn openai_compatible_chat_stream(
 
 /// Metaso (秘塔) search API proxy.
 /// POST https://metaso.cn/api/v1/search — bypasses browser CORS in Tauri webview.
-/// `scope`: webpage | image (default webpage). `size`: 1–20 (default 5).
+/// `scope`: webpage | image | video | podcast (default webpage). `size`: 1–20 (default 5).
 #[tauri::command]
 async fn metaso_search(
     api_key: String,
@@ -151,6 +151,8 @@ async fn metaso_search(
 
     let scope = match scope.as_deref().map(str::trim).unwrap_or("webpage") {
         "image" => "image",
+        "video" => "video",
+        "podcast" => "podcast",
         _ => "webpage",
     };
     let size = size.unwrap_or(5).clamp(1, 20);

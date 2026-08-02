@@ -13,6 +13,7 @@ import { startMicCapture, type MicCapture } from '../services/micCapture';
 import { buildSearchContext, metasoSearch } from '../services/search';
 import {
   spawnWebSearchCardsFromImages,
+  spawnWebSearchCardsFromMedia,
   spawnWebSearchCardsFromPages,
 } from '../services/spawnWebSearchNoteCards';
 import { hasVolcAsrCredentials, openVolcAsrSession, type VolcAsrSession } from '../services/volcAsr';
@@ -346,34 +347,66 @@ export function useVoiceWritingMode({
             aiPrompt = '用户请求了联网搜索，但没有提供检索关键词。请简洁请用户补充关键词。';
           } else {
             try {
-              const isImage = searchIntent.kind === 'image';
+              const kind = searchIntent.kind;
               const searchResult = await metasoSearch(query, {
                 apiKey: searchKey,
-                scope: isImage ? 'image' : 'webpage',
+                scope: kind,
               });
               const pages = searchResult.webpages ?? [];
               const images = searchResult.images ?? [];
-              const hitCount = isImage ? images.length : pages.length;
+              const videos = searchResult.videos ?? [];
+              const podcasts = searchResult.podcasts ?? [];
+              const hitCount =
+                kind === 'image'
+                  ? images.length
+                  : kind === 'video'
+                    ? videos.length
+                    : kind === 'podcast'
+                      ? podcasts.length
+                      : pages.length;
               if (hitCount === 0) {
                 void appAlert({
-                  message: isImage ? t('nodes.search_no_images') : t('nodes.search_no_results'),
+                  message:
+                    kind === 'image'
+                      ? t('nodes.search_no_images')
+                      : kind === 'video'
+                        ? t('nodes.search_no_videos')
+                        : kind === 'podcast'
+                          ? t('nodes.search_no_podcasts')
+                          : t('nodes.search_no_results'),
                 });
-                aiPrompt = isImage
-                  ? `用户搜图“${query}”但没有获得结果。请简洁告知用户，并建议更具体的检索词。`
-                  : `用户联网搜索“${query}”但没有获得结果。请简洁告知用户，并建议更具体的检索词。`;
+                const label =
+                  kind === 'image'
+                    ? '搜图'
+                    : kind === 'video'
+                      ? '搜视频'
+                      : kind === 'podcast'
+                        ? '搜播客'
+                        : '联网搜索';
+                aiPrompt = `用户${label}“${query}”但没有获得结果。请简洁告知用户，并建议更具体的检索词。`;
               } else {
                 const searchContext = buildSearchContext(searchResult);
                 // Show sources as linked cards without holding up the answer / TTS pipeline.
-                if (isImage) {
+                if (kind === 'image') {
                   void spawnWebSearchCardsFromImages(aiNodeId, aiPos, images, activeCanvasId);
+                } else if (kind === 'video') {
+                  void spawnWebSearchCardsFromMedia(aiNodeId, aiPos, videos, activeCanvasId, 'video');
+                } else if (kind === 'podcast') {
+                  void spawnWebSearchCardsFromMedia(aiNodeId, aiPos, podcasts, activeCanvasId, 'podcast');
                 } else {
                   void spawnWebSearchCardsFromPages(aiNodeId, aiPos, pages, activeCanvasId);
                 }
+                const doneLabel =
+                  kind === 'image'
+                    ? '图片检索'
+                    : kind === 'video'
+                      ? '视频检索'
+                      : kind === 'podcast'
+                        ? '播客检索'
+                        : '网页检索';
                 aiPrompt = [
                   `用户的问题：${query}`,
-                  isImage
-                    ? '系统已经完成图片检索，结果如下（请直接据此回答，不要再发起搜索或工具调用）：'
-                    : '系统已经完成网页检索，结果如下（请直接据此回答，不要再发起搜索或工具调用）：',
+                  `系统已经完成${doneLabel}，结果如下（请直接据此回答，不要再发起搜索或工具调用）：`,
                   searchContext,
                   '要求：只用自然语言回答；禁止输出 tool_call、函数调用 JSON、XML 标签，或任何 ]<]minimax[> 之类的特殊标记；不要提及内部工具或检索流程；不确定处请说清楚。',
                 ].join('\n\n');

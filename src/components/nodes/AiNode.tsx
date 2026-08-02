@@ -8,6 +8,7 @@ import { isContentBlurPersistenceDisabled } from '../../config/persistence';
 import { CANVAS_NODE_CONTEXT_TEXT_ATTR } from '../../utils/canvasNodeContextText';
 import { findSentenceRange } from '../../utils/ttsHighlight';
 import { WebSearchSourcesToggle } from './WebSearchSourcesToggle';
+import { markdownExternalLinkComponents } from '../MarkdownExternalLink';
 
 function TtsFollowAlongBody({
   content,
@@ -137,7 +138,7 @@ export function AiNode({
         onClick={() => setEditingNodeId(node.id)}
         className="markdown-body text-sm text-[#4a4a44] font-serif leading-relaxed cursor-text min-h-[40px]"
       >
-        <Markdown>{node.content}</Markdown>
+        <Markdown components={markdownExternalLinkComponents}>{node.content}</Markdown>
       </div>
     );
   };

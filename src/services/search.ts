@@ -4,7 +4,7 @@ const LOG_PREFIX = '[Scribe AI][Search]';
 // Types
 // ---------------------------------------------------------------------------
 
-export type MetasoSearchScope = 'webpage' | 'image';
+export type MetasoSearchScope = 'webpage' | 'image' | 'video' | 'podcast';
 
 export interface MetasoSearchConfig {
   apiKey: string;
@@ -32,11 +32,35 @@ export interface MetasoImage {
   thumbnail?: string;
 }
 
+/** Video / podcast hit (watch or listen page; not always a direct media file). */
+export interface MetasoMediaItem {
+  title?: string;
+  link?: string;
+  snippet?: string;
+  authors?: string;
+  duration?: string;
+  date?: string;
+  coverImage?: string;
+  /** Podcast show / series name */
+  showName?: string;
+  /** Direct audio URL when Metaso provides one */
+  audioUrl?: string;
+}
+
 export interface MetasoSearchResponse {
   credits: number;
   total: number;
   webpages: MetasoWebpage[];
   images?: MetasoImage[];
+  videos?: MetasoMediaItem[];
+  podcasts?: MetasoMediaItem[];
+}
+
+const METASO_SCOPES: readonly MetasoSearchScope[] = ['webpage', 'image', 'video', 'podcast'];
+
+export function resolveMetasoScope(raw: unknown): MetasoSearchScope {
+  const s = typeof raw === 'string' ? raw.trim() : '';
+  return (METASO_SCOPES as readonly string[]).includes(s) ? (s as MetasoSearchScope) : 'webpage';
 }
 
 // ---------------------------------------------------------------------------
@@ -56,9 +80,36 @@ function asHttpUrl(raw: unknown): string {
   return /^https?:\/\//i.test(s) ? s : '';
 }
 
+function asText(raw: unknown): string {
+  if (typeof raw === 'string') return raw.trim();
+  if (typeof raw === 'number' && Number.isFinite(raw)) return String(raw);
+  return '';
+}
+
+function asAuthors(raw: unknown): string {
+  if (Array.isArray(raw)) {
+    return raw
+      .map((x) => asText(x))
+      .filter(Boolean)
+      .join(', ');
+  }
+  return asText(raw);
+}
+
+function formatDuration(raw: unknown): string {
+  if (raw == null || raw === '') return '';
+  if (typeof raw === 'string' && !/^\d+$/.test(raw.trim())) return raw.trim();
+  const sec = typeof raw === 'number' ? raw : Number.parseInt(String(raw).trim(), 10);
+  if (!Number.isFinite(sec) || sec < 0) return asText(raw);
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 function looksLikeImageUrl(url: string): boolean {
   if (!url) return false;
-  // Strip query/hash for extension checks; many CDNs omit extensions but are still images.
   const path = url.split('?')[0]?.split('#')[0] ?? url;
   return /\.(avif|bmp|gif|jpe?g|png|svg|webp)(\b|$)/i.test(path) || /\/image|img\.|cdn\.|pic\.|thumb/i.test(url);
 }
@@ -71,7 +122,6 @@ export function resolveMetasoImageUrl(img: MetasoImage): string {
   if (thumb) return thumb;
   const link = asHttpUrl(img.link);
   if (link && looksLikeImageUrl(link)) return link;
-  // Last resort: some payloads put the image in `link` without a clear extension.
   return link;
 }
 
@@ -109,7 +159,34 @@ function normalizeMetasoImage(raw: unknown): MetasoImage | null {
   return normalized;
 }
 
-/** Normalize API payloads so callers always see `images[].imageUrl`. */
+function normalizeMetasoMediaItem(raw: unknown): MetasoMediaItem | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const link =
+    asHttpUrl(o.link) ||
+    asHttpUrl(o.url) ||
+    asHttpUrl(o.sourceUrl) ||
+    asHttpUrl(o.source_url) ||
+    asHttpUrl(o.audioUrl) ||
+    '';
+  const title = asText(o.title) || asText(o.name);
+  const snippet = asText(o.snippet) || asText(o.description) || asText(o.abstract);
+  if (!link && !title && !snippet) return null;
+
+  return {
+    title: title || undefined,
+    link: link || undefined,
+    snippet: snippet || undefined,
+    authors: asAuthors(o.authors) || asAuthors(o.channel) || asAuthors(o.host) || undefined,
+    duration: formatDuration(o.duration) || undefined,
+    date: asText(o.date) || asText(o.publishDate) || asText(o.displayDate) || undefined,
+    coverImage: asHttpUrl(o.coverImage) || asHttpUrl(o.thumbnail) || undefined,
+    showName: asText(o.podcastName) || asText(o.show) || undefined,
+    audioUrl: asHttpUrl(o.audioUrl) || undefined,
+  };
+}
+
+/** Normalize API payloads so callers see images / videos / podcasts arrays. */
 export function normalizeMetasoSearchResponse(raw: unknown): MetasoSearchResponse {
   const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const webpages = Array.isArray(o.webpages) ? (o.webpages as MetasoWebpage[]) : [];
@@ -124,11 +201,37 @@ export function normalizeMetasoSearchResponse(raw: unknown): MetasoSearchRespons
     });
   }
 
+  const rawVideos = Array.isArray(o.videos) ? o.videos : [];
+  const videos = rawVideos
+    .map((item) => normalizeMetasoMediaItem(item))
+    .filter((item): item is MetasoMediaItem => item != null);
+
+  const rawPodcasts = Array.isArray(o.podcasts) ? o.podcasts : [];
+  const podcasts = rawPodcasts
+    .map((item) => normalizeMetasoMediaItem(item))
+    .filter((item): item is MetasoMediaItem => item != null);
+
+  if (rawVideos.length > 0 && videos.length === 0) {
+    console.warn(`${LOG_PREFIX} received ${rawVideos.length} video hits but none were usable`, {
+      sampleKeys: Object.keys((rawVideos[0] as object) ?? {}),
+    });
+  }
+  if (rawPodcasts.length > 0 && podcasts.length === 0) {
+    console.warn(`${LOG_PREFIX} received ${rawPodcasts.length} podcast hits but none were usable`, {
+      sampleKeys: Object.keys((rawPodcasts[0] as object) ?? {}),
+    });
+  }
+
   return {
     credits: typeof o.credits === 'number' ? o.credits : 0,
-    total: typeof o.total === 'number' ? o.total : images.length || webpages.length,
+    total:
+      typeof o.total === 'number'
+        ? o.total
+        : images.length || videos.length || podcasts.length || webpages.length,
     webpages,
     images,
+    videos,
+    podcasts,
   };
 }
 
@@ -153,7 +256,7 @@ export async function metasoSearch(
     throw new Error('Metaso API key is empty');
   }
 
-  const scope: MetasoSearchScope = config.scope === 'image' ? 'image' : 'webpage';
+  const scope = resolveMetasoScope(config.scope);
   const size = Math.min(Math.max(config.size ?? 5, 1), 20);
 
   console.info(`${LOG_PREFIX} metasoSearch`, { query, scope, size });
@@ -220,7 +323,11 @@ export async function metasoSearch(
 export function buildSearchContext(results: MetasoSearchResponse): string {
   const webpages = results.webpages ?? [];
   const images = results.images ?? [];
-  if (webpages.length === 0 && images.length === 0) return '';
+  const videos = results.videos ?? [];
+  const podcasts = results.podcasts ?? [];
+  if (webpages.length === 0 && images.length === 0 && videos.length === 0 && podcasts.length === 0) {
+    return '';
+  }
 
   const fragments: string[] = [];
 
@@ -233,6 +340,21 @@ export function buildSearchContext(results: MetasoSearchResponse): string {
     const title = (img.title || 'Image').trim();
     const page = img.link && img.link !== url ? `\nPage: ${img.link}` : '';
     fragments.push(`[Image ${idx + 1}: ${title}]${url ? `(${url})` : ''}${page}`);
+  });
+
+  videos.forEach((v, idx) => {
+    const meta = [v.authors, v.duration].filter(Boolean).join(' · ');
+    fragments.push(
+      `[Video ${idx + 1}: ${v.title || 'Video'}]${v.link ? `(${v.link})` : ''}${meta ? `\n${meta}` : ''}${v.snippet ? `\n${v.snippet}` : ''}`,
+    );
+  });
+
+  podcasts.forEach((p, idx) => {
+    const meta = [p.showName, p.authors, p.duration].filter(Boolean).join(' · ');
+    const href = p.link || p.audioUrl || '';
+    fragments.push(
+      `[Podcast ${idx + 1}: ${p.title || 'Podcast'}]${href ? `(${href})` : ''}${meta ? `\n${meta}` : ''}${p.snippet ? `\n${p.snippet}` : ''}`,
+    );
   });
 
   return [

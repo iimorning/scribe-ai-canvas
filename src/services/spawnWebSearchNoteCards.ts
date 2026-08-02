@@ -1,6 +1,7 @@
 import { db, type CanvasNode, type Edge } from '../db';
-import type { MetasoImage, MetasoWebpage } from './search';
+import type { MetasoImage, MetasoMediaItem, MetasoWebpage } from './search';
 import { resolveMetasoImageUrl } from './search';
+import { resolveMediaPlayback } from '../utils/mediaEmbed';
 
 const DEFAULT_STAGGER_MS = 320;
 /** Sources live in a dedicated vertical lane beside the answer, never in a fan of overlaps. */
@@ -285,6 +286,70 @@ export async function spawnWebSearchCardsFromPages(
       width: SOURCE_CARD_WIDTH,
       height: SOURCE_CARD_HEIGHT,
       layout: 2,
+      webSearchParentId: sourceNodeId,
+      webSearchIndex: laneIndex,
+    });
+    await db.edges.add({
+      id: crypto.randomUUID(),
+      canvasId: activeCanvasId,
+      from: sourceNodeId,
+      to: id,
+    });
+  }
+}
+
+/**
+ * Create playable video/podcast cards for Metaso hits (vertical lane).
+ * Uses in-card iframe / video / audio when the URL is embeddable; otherwise a fallback + source link.
+ */
+export async function spawnWebSearchCardsFromMedia(
+  sourceNodeId: string,
+  base: { x: number; y: number },
+  items: MetasoMediaItem[],
+  activeCanvasId: string,
+  kind: 'video' | 'podcast',
+  options?: {
+    staggerMs?: number;
+    anchorHeight?: number;
+    indexOffset?: number;
+    laneCount?: number;
+  },
+): Promise<void> {
+  const staggerMs = options?.staggerMs ?? DEFAULT_STAGGER_MS;
+  const anchorHeight = options?.anchorHeight ?? DEFAULT_ANCHOR_HEIGHT;
+  const indexOffset = options?.indexOffset ?? 0;
+  const list = items.filter((p) => (p.title || p.snippet || p.link || p.audioUrl || '').trim().length > 0);
+  const laneCount = options?.laneCount ?? indexOffset + list.length;
+
+  for (let i = 0; i < list.length; i++) {
+    if (i > 0) {
+      await new Promise((r) => setTimeout(r, staggerMs));
+    }
+    const laneIndex = indexOffset + i;
+    const id = crypto.randomUUID();
+    const item = list[i]!;
+    const page = (item.link || item.audioUrl || '').trim();
+    const playback = resolveMediaPlayback({
+      kind,
+      link: item.link,
+      audioUrl: item.audioUrl,
+    });
+    const title = (item.title || (kind === 'video' ? 'Video' : 'Podcast')).replace(/\s+/g, ' ').trim();
+    const meta = [kind === 'podcast' ? item.showName : undefined, item.authors, item.duration]
+      .filter(Boolean)
+      .join(' · ');
+    await db.nodes.add({
+      id,
+      canvasId: activeCanvasId,
+      type: 'video',
+      content: playback.mode === 'none' ? page : playback.src,
+      description: meta ? `${title} · ${meta}` : title,
+      sourceUrl: page || undefined,
+      fileType: playback.mode === 'none' ? undefined : playback.mode,
+      x: base.x + SOURCE_LANE_OFFSET_X,
+      y: sourceCardY(base.y, laneIndex, laneCount, anchorHeight),
+      width: SOURCE_CARD_WIDTH,
+      height: SOURCE_CARD_HEIGHT,
       webSearchParentId: sourceNodeId,
       webSearchIndex: laneIndex,
     });

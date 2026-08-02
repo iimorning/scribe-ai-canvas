@@ -9,6 +9,7 @@ import {
   sourceCardY,
   sourceImageScatterPos,
   spawnWebSearchCardsFromImages,
+  spawnWebSearchCardsFromMedia,
   SOURCE_CARD_WIDTH,
   SOURCE_LANE_OFFSET_X,
   SOURCE_ROW_GAP_Y,
@@ -304,6 +305,40 @@ describe('spawnWebSearchCardsFromImages', () => {
       sourceImageScatterPos({ x: 40, y: 60 }, 1, 3, 200),
     );
     expect((await db.nodes.get('img0'))!.x).not.toBe((await db.nodes.get('img1'))!.x);
+  });
+
+  it('creates playable video cards for embeddable / direct media hits', async () => {
+    await db.nodes.add({ id: 'ai-media', type: 'ai', content: 'ack', x: 10, y: 20 });
+    await spawnWebSearchCardsFromMedia(
+      'ai-media',
+      { x: 10, y: 20 },
+      [
+        {
+          title: 'Vintage haul',
+          link: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          authors: 'Style',
+          duration: '2:05',
+        },
+        {
+          title: 'Direct clip',
+          link: 'https://cdn.example/clip.mp4',
+        },
+      ],
+      'canvas-1',
+      'video',
+      { staggerMs: 0, anchorHeight: 280 },
+    );
+
+    const cards = (await db.nodes.toArray())
+      .filter((n) => n.type === 'video')
+      .sort((a, b) => (a.webSearchIndex ?? 0) - (b.webSearchIndex ?? 0));
+    expect(cards).toHaveLength(2);
+    expect(cards[0]?.fileType).toBe('iframe');
+    expect(cards[0]?.content).toContain('youtube.com/embed/dQw4w9WgXcQ');
+    expect(cards[0]?.sourceUrl).toContain('watch?v=');
+    expect(cards[1]?.fileType).toBe('video');
+    expect(cards[1]?.content).toBe('https://cdn.example/clip.mp4');
+    expect(cards[0]?.x).toBe(10 + SOURCE_LANE_OFFSET_X);
   });
 
   it('restores user-adjusted expand positions after collapse', async () => {

@@ -37,6 +37,18 @@ describe('parseThreadWebSearchIntent', () => {
     expect(parseThreadWebSearchIntent('image search sunset')?.explicitQuery).toBe('sunset');
   });
 
+  it('detects 搜视频 / video search', () => {
+    expect(parseThreadWebSearchIntent('搜视频 古着穿搭')?.kind).toBe('video');
+    expect(parseThreadWebSearchIntent('搜视频 古着穿搭')?.explicitQuery).toBe('古着穿搭');
+    expect(parseThreadWebSearchIntent('video search street style')?.kind).toBe('video');
+  });
+
+  it('detects 搜播客 / podcast search', () => {
+    expect(parseThreadWebSearchIntent('搜播客 时尚史')?.kind).toBe('podcast');
+    expect(parseThreadWebSearchIntent('搜播客 时尚史')?.explicitQuery).toBe('时尚史');
+    expect(parseThreadWebSearchIntent('podcast search vintage')?.kind).toBe('podcast');
+  });
+
   it('does not treat mid-sentence mention as a typed command', () => {
     expect(
       parseThreadWebSearchIntent(
@@ -82,6 +94,11 @@ describe('parseVoiceWebSearchIntent', () => {
     const intent = parseVoiceWebSearchIntent('帮我搜图一下富士山和樱花');
     expect(intent?.kind).toBe('image');
     expect(intent?.explicitQuery).toMatch(/富士山|樱花/);
+  });
+
+  it('detects mid-sentence 搜视频 / 搜播客', () => {
+    expect(parseVoiceWebSearchIntent('帮我搜视频一下古着穿搭')?.kind).toBe('video');
+    expect(parseVoiceWebSearchIntent('帮我搜播客一下时尚史')?.kind).toBe('podcast');
   });
 
   it('returns null when there is no search trigger', () => {

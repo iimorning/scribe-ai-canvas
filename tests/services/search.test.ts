@@ -4,6 +4,7 @@ import {
   buildSearchContext,
   resolveMetasoImageUrl,
   normalizeMetasoSearchResponse,
+  resolveMetasoScope,
 } from '../../src/services/search';
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -76,6 +77,14 @@ describe('metasoSearch', () => {
     });
   });
 
+  describe('resolveMetasoScope', () => {
+    it('accepts video and podcast', () => {
+      expect(resolveMetasoScope('video')).toBe('video');
+      expect(resolveMetasoScope('podcast')).toBe('podcast');
+      expect(resolveMetasoScope('unknown')).toBe('webpage');
+    });
+  });
+
   describe('normalizeMetasoSearchResponse', () => {
     it('maps imageUrl / sourceUrl from Metaso image payloads', () => {
       const normalized = normalizeMetasoSearchResponse({
@@ -92,6 +101,46 @@ describe('metasoSearch', () => {
       expect(normalized.images).toHaveLength(1);
       expect(resolveMetasoImageUrl(normalized.images![0]!)).toBe('https://img.example/vintage.jpg');
       expect(normalized.images![0]!.link).toBe('https://page.example/article');
+    });
+
+    it('maps videos and podcasts arrays', () => {
+      const normalized = normalizeMetasoSearchResponse({
+        credits: 1,
+        total: 2,
+        videos: [
+          {
+            title: 'Vintage haul',
+            link: 'https://video.example/1',
+            channel: 'Style',
+            duration: 125,
+            snippet: 'A lookbook',
+          },
+        ],
+        podcasts: [
+          {
+            title: 'Fashion history',
+            url: 'https://pod.example/ep1',
+            host: 'Ada',
+            podcastName: 'Cloth Talk',
+            duration: 3661,
+          },
+        ],
+      });
+      expect(normalized.videos).toHaveLength(1);
+      expect(normalized.videos![0]).toMatchObject({
+        title: 'Vintage haul',
+        link: 'https://video.example/1',
+        authors: 'Style',
+        duration: '2:05',
+      });
+      expect(normalized.podcasts).toHaveLength(1);
+      expect(normalized.podcasts![0]).toMatchObject({
+        title: 'Fashion history',
+        link: 'https://pod.example/ep1',
+        authors: 'Ada',
+        showName: 'Cloth Talk',
+        duration: '1:01:01',
+      });
     });
   });
 
@@ -164,6 +213,29 @@ describe('metasoSearch', () => {
         }),
       );
       expect(result.images).toHaveLength(1);
+    });
+
+    it('calls proxy with video and podcast scopes', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ credits: 1, total: 0, videos: [], podcasts: [] }),
+      });
+
+      await metasoSearch('talk', { apiKey: 'sk-metaso-test', scope: 'video', size: 5 });
+      expect(mockFetch).toHaveBeenLastCalledWith(
+        '/api/metaso/api/v1/search',
+        expect.objectContaining({
+          body: JSON.stringify({ q: 'talk', scope: 'video', size: 5 }),
+        }),
+      );
+
+      await metasoSearch('talk', { apiKey: 'sk-metaso-test', scope: 'podcast', size: 5 });
+      expect(mockFetch).toHaveBeenLastCalledWith(
+        '/api/metaso/api/v1/search',
+        expect.objectContaining({
+          body: JSON.stringify({ q: 'talk', scope: 'podcast', size: 5 }),
+        }),
+      );
     });
 
     it('throws on HTTP error', async () => {
