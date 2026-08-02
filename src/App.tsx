@@ -18,7 +18,9 @@ import { DraggableNode } from './components/canvas/DraggableNode';
 import { AISettingsModal } from './components/AISettingsModal';
 import { Sidebar } from './components/Sidebar';
 import { CanvasHistoryPopover } from './components/CanvasHistoryPopover';
+import { CanvasNoteSearch } from './components/CanvasNoteSearch';
 import { CanvasToolbar } from './components/CanvasToolbar';
+import { transformToFocusNode } from './utils/voiceNoteLayout';
 import type { AIConfig } from './components/AISettingsModal';
 import { Reference } from './components/Reference';
 import { ResearchLab } from './components/ResearchLab';
@@ -617,7 +619,29 @@ export default function App() {
           )}
 
           {/* Symmetrical Controls */}
-          <CanvasHistoryPopover canvases={canvases} activeCanvasId={activeCanvasId} setActiveCanvasId={setActiveCanvasId} />
+          <div className="absolute top-6 left-6 flex items-center z-40 gap-2">
+            <CanvasHistoryPopover
+              canvases={canvases}
+              activeCanvasId={activeCanvasId}
+              setActiveCanvasId={setActiveCanvasId}
+            />
+            <CanvasNoteSearch
+              nodes={dynamicNodes}
+              onFocusNode={(node) => {
+                const scale = transformRef.current.scale;
+                setCanvasTransform(
+                  transformToFocusNode(
+                    node.x,
+                    node.y,
+                    scale,
+                    node.width ?? 320,
+                    node.height ?? 200,
+                  ),
+                );
+                setSelectedNodes(new Set([node.id]));
+              }}
+            />
+          </div>
 
           {/* Transformed content container */}
           <div className="absolute top-6 right-6 flex items-center z-40 gap-3">
