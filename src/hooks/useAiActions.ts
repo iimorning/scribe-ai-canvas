@@ -25,6 +25,10 @@ import {
 } from '../utils/canvasContextImages';
 import { getCanvasNodeContextText } from '../utils/canvasNodeContextText';
 import { parsePublishArticleResponse } from '../utils/parsePublishArticleResponse';
+import {
+  buildPublishSourceMaterial,
+  ensurePublishMediaInBody,
+} from '../utils/publishSourceMaterial';
 import { db } from '../db';
 import { useAppDialog } from '../components/AppDialogProvider';
 import { runCanvasStreamingAiCall } from '../utils/canvasStreamingAi';
@@ -110,25 +114,32 @@ export function useAiActions({
     if (selectedNodes.size === 0 || isAnyAiBusy) return;
     setIsPublishing(true);
     try {
-      let combinedText = '';
-      for (const id of Array.from(selectedNodes)) {
-        const el = nodesRef.current[id];
-        if (el) {
-          combinedText += getCanvasNodeContextText(el) + '\n\n';
-        }
-      }
+      const selectedIds = Array.from(selectedNodes);
+      const { promptContent, mediaAssets } = buildPublishSourceMaterial(
+        selectedIds,
+        dynamicNodes,
+        (nodeId) => {
+          const el = nodesRef.current[nodeId];
+          return el ? getCanvasNodeContextText(el) : '';
+        },
+      );
 
       const text = await callUniversalAI({
         config: aiConfig,
         systemInstruction: getLocaleDirective(),
-        prompt: t('ai.prompts.publish', { content: combinedText }),
+        prompt: t('ai.prompts.publish', { content: promptContent }),
       });
 
-      const { title, body } = parsePublishArticleResponse(text || '', t('ai.generated_article_title'));
+      const parsed = parsePublishArticleResponse(text || '', t('ai.generated_article_title'));
+      const body = ensurePublishMediaInBody(
+        parsed.body,
+        mediaAssets,
+        t('ai.publish_related_media'),
+      );
 
       const newArticle = {
         id: `gen-${Date.now()}`,
-        title,
+        title: parsed.title,
         content: body,
         date: new Date().getFullYear().toString(),
         type: 'GEN-' + Math.floor(Math.random() * 1000),
