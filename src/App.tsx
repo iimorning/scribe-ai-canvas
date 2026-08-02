@@ -365,6 +365,9 @@ export default function App() {
     isAnyAiBusy,
     aiPrompt,
     setAiPrompt,
+    pendingQuote,
+    askAboutSelection,
+    clearPendingQuote,
     handlePublish,
     triggerAgentAnalysis,
     handleAiSubmit,
@@ -688,6 +691,7 @@ export default function App() {
                     ttsHighlightSentence={
                       ttsHighlight?.nodeId === node.id ? ttsHighlight.sentence : null
                     }
+                    onAskAboutBookSelection={askAboutSelection}
                   />
                 </DraggableNode>
               );
@@ -713,6 +717,8 @@ export default function App() {
           voicePhase={voicePhase}
           onToggleVoiceMode={toggleVoiceMode}
           onStopVoiceActivity={stopVoiceActivity}
+          pendingQuote={pendingQuote}
+          onClearPendingQuote={clearPendingQuote}
         />
         </main>
         )}

@@ -68,6 +68,8 @@ export function useAiActions({
   const [followUpParentId, setFollowUpParentId] = useState<string | null>(null);
   const [streamingAiNodeId, setStreamingAiNodeId] = useState<string | null>(null);
   const [aiPrompt, setAiPrompt] = useState('');
+  /** Passage quoted from a book node (“Ask AI” on selection). */
+  const [pendingQuote, setPendingQuote] = useState<{ text: string; sourceLabel?: string } | null>(null);
   const [intentClarification, setIntentClarification] = useState<{
     original: string;
     options: [string, string, string];
@@ -203,6 +205,14 @@ export function useAiActions({
     }
   };
 
+  const askAboutSelection = (quote: string, sourceLabel?: string) => {
+    const text = quote.replace(/\s+/g, ' ').trim();
+    if (!text) return;
+    setPendingQuote({ text, sourceLabel: sourceLabel?.trim() || undefined });
+  };
+
+  const clearPendingQuote = () => setPendingQuote(null);
+
   const runToolbarAiGeneration = async (request: string) => {
     const { x, y } = getCanvasCenterPosition(transformRef.current);
     const newNodeId = crypto.randomUUID();
@@ -217,7 +227,24 @@ export function useAiActions({
     setStreamingAiNodeId(newNodeId);
 
     try {
-      if (selectedNodes.size === 0) {
+      const fragmentLabel = t('ai.prompts.context_fragment_label');
+      let contextText = '';
+
+      if (pendingQuote?.text) {
+        const src = pendingQuote.sourceLabel
+          ? t('ai.prompts.quote_source_label', { source: pendingQuote.sourceLabel })
+          : '';
+        contextText = fragmentLabel + src + pendingQuote.text;
+      } else if (selectedNodes.size > 0) {
+        for (const id of Array.from(selectedNodes)) {
+          const el = nodesRef.current[id];
+          if (el) {
+            contextText += fragmentLabel + getCanvasNodeContextText(el);
+          }
+        }
+      }
+
+      if (!contextText) {
         const text = await runCanvasStreamingAiCall({
           nodeId: newNodeId,
           callAi: (onStreamChunk) =>
@@ -231,17 +258,11 @@ export function useAiActions({
               onStreamChunk,
             }),
         });
-        if (text) setAiPrompt('');
-        return;
-      }
-
-      let contextText = '';
-      const fragmentLabel = t('ai.prompts.context_fragment_label');
-      for (const id of Array.from(selectedNodes)) {
-        const el = nodesRef.current[id];
-        if (el) {
-          contextText += fragmentLabel + getCanvasNodeContextText(el);
+        if (text) {
+          setAiPrompt('');
+          setPendingQuote(null);
         }
+        return;
       }
 
       const text = await runCanvasStreamingAiCall({
@@ -257,7 +278,10 @@ export function useAiActions({
             onStreamChunk,
           }),
       });
-      if (text) setAiPrompt('');
+      if (text) {
+        setAiPrompt('');
+        setPendingQuote(null);
+      }
     } finally {
       setStreamingAiNodeId(null);
     }
@@ -572,6 +596,9 @@ export function useAiActions({
     isAnyAiBusy,
     aiPrompt,
     setAiPrompt,
+    pendingQuote,
+    askAboutSelection,
+    clearPendingQuote,
     handlePublish,
     triggerAgentAnalysis,
     handleAiSubmit,

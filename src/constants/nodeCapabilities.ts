@@ -3,7 +3,7 @@
  *
  * - **语义与版式可调**：`theme`、`note`、`text` — UI 读取 `layout` 切换多套样式（便签/文本为 0–4，主题为 0–3）。
  * - **AI 链路**：`ai`（生成/追问卡片）、`agent`（实体 Agent 卡片）— 不参与版式轮换。
- * - **介质**：`image`、`video`、`document` — 固定外壳，不参加版式轮换。
+ * - **介质**：`image`、`video`、`document`、`book` — 固定外壳，不参加版式轮换。
  */
 
 export const NODE_TYPES_WITH_LAYOUT_CYCLE = ['theme', 'note', 'text'] as const;

@@ -27,3 +27,8 @@ export interface AiNodeProps extends NodeContentProps {
   /** Sentence currently being read aloud (voice mode TTS follow-along). */
   ttsHighlightSentence?: string | null;
 }
+
+export interface BookNodeProps extends NodeContentProps {
+  /** Quote selected text into the toolbar AI context. */
+  onAskAboutSelection?: (quote: string, sourceLabel?: string) => void;
+}

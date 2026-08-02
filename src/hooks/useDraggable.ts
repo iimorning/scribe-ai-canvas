@@ -29,6 +29,7 @@ export function useDraggable(initialX: number, initialY: number, scale: number =
     if (
       target.isContentEditable ||
       target.closest('[contenteditable="true"]') ||
+      target.closest('[data-no-drag]') ||
       target.tagName === 'BUTTON' ||
       target.tagName === 'INPUT' ||
       target.tagName === 'TEXTAREA' ||

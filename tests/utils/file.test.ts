@@ -1,5 +1,6 @@
 ﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { processFileToNode, readFileAsDataURL } from '../../src/utils/file';
+import { BOOK_CONTENT_PREFIX } from '../../src/utils/bookPayload';
 
 vi.mock('mammoth', () => ({
   default: {
@@ -8,6 +9,22 @@ vi.mock('mammoth', () => ({
       messages: [],
     }),
   },
+}));
+
+vi.mock('../../src/utils/parsePdfBook', () => ({
+  parsePdfBook: vi.fn().mockResolvedValue({
+    format: 'pdf',
+    title: 'Paper',
+    units: [{ title: '1', text: 'PDF page one' }],
+  }),
+}));
+
+vi.mock('../../src/utils/parseEpubBook', () => ({
+  parseEpubBook: vi.fn().mockResolvedValue({
+    format: 'epub',
+    title: 'Novel',
+    units: [{ title: 'Ch1', text: 'Once upon a time' }],
+  }),
 }));
 
 function createFile(name: string, type: string, content: string | ArrayBuffer): File {
@@ -76,6 +93,26 @@ describe('processFileToNode', () => {
     expect(result.content).toBe('# Hello');
     expect(result.description).toBe('readme.md');
     expect(result.fileType).toBe('text/markdown');
+  });
+
+  it('processes .pdf files into book nodes', async () => {
+    const file = createFile('paper.pdf', 'application/pdf', new ArrayBuffer(32));
+    const result = await processFileToNode(file);
+    expect(result.type).toBe('book');
+    expect(result.fileType).toBe('pdf');
+    expect(result.description).toBe('paper.pdf');
+    expect(result.content.startsWith(BOOK_CONTENT_PREFIX)).toBe(true);
+    expect(result.width).toBe(380);
+    expect(result.height).toBe(520);
+  });
+
+  it('processes .epub files into book nodes', async () => {
+    const file = createFile('novel.epub', 'application/epub+zip', new ArrayBuffer(32));
+    const result = await processFileToNode(file);
+    expect(result.type).toBe('book');
+    expect(result.fileType).toBe('epub');
+    expect(result.description).toBe('novel.epub');
+    expect(result.content.startsWith(BOOK_CONTENT_PREFIX)).toBe(true);
   });
 
   it('throws for unsupported file types', async () => {

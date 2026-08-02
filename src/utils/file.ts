@@ -1,4 +1,7 @@
 ﻿import mammoth from 'mammoth';
+import { encodeBookContent } from './bookPayload';
+import { parseEpubBook } from './parseEpubBook';
+import { parsePdfBook } from './parsePdfBook';
 
 export function readFileAsDataURL(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -23,6 +26,23 @@ export interface FileNodeData {
   content: string;
   description?: string;
   fileType: string;
+  width?: number;
+  height?: number;
+}
+
+const BOOK_NODE_SIZE = { width: 380, height: 520 };
+
+function isPdfFile(file: File): boolean {
+  return file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+}
+
+function isEpubFile(file: File): boolean {
+  const name = file.name.toLowerCase();
+  return (
+    name.endsWith('.epub') ||
+    file.type === 'application/epub+zip' ||
+    file.type === 'application/epub'
+  );
 }
 
 export async function processFileToNode(file: File): Promise<FileNodeData> {
@@ -39,6 +59,30 @@ export async function processFileToNode(file: File): Promise<FileNodeData> {
       type: 'image',
       content: await readFileAsDataURL(file),
       fileType: file.type,
+    };
+  }
+
+  if (isPdfFile(file)) {
+    const arrayBuffer = await file.arrayBuffer();
+    const book = await parsePdfBook(arrayBuffer, file.name);
+    return {
+      type: 'book',
+      content: encodeBookContent(book),
+      description: file.name,
+      fileType: 'pdf',
+      ...BOOK_NODE_SIZE,
+    };
+  }
+
+  if (isEpubFile(file)) {
+    const arrayBuffer = await file.arrayBuffer();
+    const book = await parseEpubBook(arrayBuffer, file.name);
+    return {
+      type: 'book',
+      content: encodeBookContent(book),
+      description: file.name,
+      fileType: 'epub',
+      ...BOOK_NODE_SIZE,
     };
   }
 

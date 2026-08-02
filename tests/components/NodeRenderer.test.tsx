@@ -226,6 +226,27 @@ describe('NodeRenderer', () => {
     expect(container.querySelector('[data-testid="icon-FileText"]')).toBeInTheDocument();
   });
 
+  it('type="book" 渲染 BookNode', () => {
+    const content =
+      'spoor-book:v1:' +
+      JSON.stringify({
+        format: 'pdf',
+        title: 'Demo',
+        units: [{ title: '1', text: 'Page body' }],
+      });
+    const { container, getByText } = render(
+      <NodeRenderer
+        node={makeNode('book', { content, description: 'demo.pdf', fileType: 'pdf' })}
+        editingNodeId={null}
+        setEditingNodeId={vi.fn()}
+        agentConfigs={mockAgentConfigs}
+        analyzingAgentNodeId={null}
+      />
+    );
+    expect(container.querySelector('[data-testid="icon-BookOpen"]')).toBeInTheDocument();
+    expect(getByText('Page body')).toBeInTheDocument();
+  });
+
   it('type="agent" 渲染 AgentNode', () => {
     const { getByText, queryByTestId } = render(
       <NodeRenderer

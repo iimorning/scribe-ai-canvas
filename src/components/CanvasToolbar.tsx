@@ -46,6 +46,9 @@ export interface CanvasToolbarProps {
   onToggleVoiceMode?: () => void;
   /** Phase-chip stop: finish listen / stop TTS / cancel thinking */
   onStopVoiceActivity?: () => void;
+  /** Quoted passage from a book node, used as AI context on next submit. */
+  pendingQuote?: { text: string; sourceLabel?: string } | null;
+  onClearPendingQuote?: () => void;
 }
 
 export function CanvasToolbar({
@@ -70,6 +73,8 @@ export function CanvasToolbar({
   voicePhase = 'idle',
   onToggleVoiceMode,
   onStopVoiceActivity,
+  pendingQuote = null,
+  onClearPendingQuote,
 }: CanvasToolbarProps) {
   const { t } = useTranslation();
 
@@ -114,6 +119,30 @@ export function CanvasToolbar({
             >
               <Square className="w-2.5 h-2.5 fill-current" />
             </button>
+          </div>
+        )}
+        {pendingQuote?.text && (
+          <div className="mb-2 self-stretch flex items-start gap-2 px-3 py-2 rounded-xl bg-[#FFF7ED] border border-[#FDBA74] text-[12px] text-[#9a3412] shadow-sm">
+            <Sparkles className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="font-sans font-bold text-[10px] uppercase tracking-wider text-[#C2410C] mb-0.5">
+                {pendingQuote.sourceLabel
+                  ? t('ai.quote_chip_with_source', { source: pendingQuote.sourceLabel })
+                  : t('ai.quote_chip')}
+              </div>
+              <p className="font-serif leading-snug line-clamp-2 break-words">{pendingQuote.text}</p>
+            </div>
+            {onClearPendingQuote && (
+              <button
+                type="button"
+                title={t('ai.quote_clear')}
+                aria-label={t('ai.quote_clear')}
+                onClick={onClearPendingQuote}
+                className="shrink-0 text-[#C2410C]/70 hover:text-[#C2410C] font-bold px-1"
+              >
+                ×
+              </button>
+            )}
           </div>
         )}
         <div className={`bg-white rounded-2xl shadow-2xl border border-[#E6E4DF] p-2 flex items-center space-x-2 ring-4 ring-[#F4F1ED]/50 transition-all ${isToolbarAiLoading ? 'opacity-80' : ''} ${voiceModeActive ? 'opacity-90' : ''}`}>
@@ -169,7 +198,7 @@ export function CanvasToolbar({
             </div>
             <label title="Upload File" className="w-8 h-8 flex items-center justify-center text-[#5a5a54] hover:text-[#1a1a1a] hover:bg-[#F4F1ED] rounded-lg cursor-pointer transition-colors m-0">
               <FileTextIcon className="w-4 h-4" />
-              <input type="file" accept="image/*,video/*,.docx,.txt,.md" className="hidden" onChange={addFileNode} />
+              <input type="file" accept="image/*,video/*,.docx,.txt,.md,.pdf,.epub,application/pdf,application/epub+zip" className="hidden" onChange={addFileNode} />
             </label>
             <button
               type="button"
