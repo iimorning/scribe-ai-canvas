@@ -1,11 +1,19 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Coffee } from 'lucide-react';
-import type { NodeContentProps } from '../../types';
+import type { NoteNodeProps } from '../../types';
 import { NoteBody } from '../NoteBody';
 import { receiptDerivedFromId } from '../receiptDerivedFromId';
+import { WebSearchSourcesToggle } from '../../WebSearchSourcesToggle';
 
-export function NoteLayoutReceipt({ node, editingNodeId, setEditingNodeId }: NodeContentProps) {
+export function NoteLayoutReceipt({
+  node,
+  editingNodeId,
+  setEditingNodeId,
+  webSearchSourceCount = 0,
+  webSearchSourcesCollapsed = false,
+  onToggleWebSearchSources,
+}: NoteNodeProps) {
   const { t, i18n } = useTranslation();
 
   const receiptMeta = useMemo(() => receiptDerivedFromId(node.id), [node.id]);
@@ -28,9 +36,14 @@ export function NoteLayoutReceipt({ node, editingNodeId, setEditingNodeId }: Nod
 
   return (
     <div
-      className="note-surface-receipt receipt-note-shadow flex h-full w-full min-h-0 flex-col transition-all duration-500"
+      className="note-surface-receipt receipt-note-shadow relative flex h-full w-full min-h-0 flex-col transition-all duration-500"
       style={{ outline: '1px solid transparent' }}
     >
+      <WebSearchSourcesToggle
+        count={webSearchSourceCount}
+        collapsed={webSearchSourcesCollapsed}
+        onToggle={onToggleWebSearchSources}
+      />
       <div className="receipt-jagged-top note-receipt-paper shrink-0 rotate-180" aria-hidden />
       <div className="note-receipt-paper relative flex min-h-0 flex-1 flex-col overflow-hidden px-5 py-5">
         <div

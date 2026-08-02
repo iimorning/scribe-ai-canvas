@@ -14,6 +14,16 @@ export const SOURCE_STACK_STEP = 5;
 export const DEFAULT_ANCHOR_HEIGHT = 280;
 
 /**
+ * Image expand: cluster center X relative to the parent card's left edge.
+ * Far enough that a typical ~320px note stays readable (scatter sits to its right).
+ */
+export const IMAGE_SCATTER_OFFSET_X = 780;
+/** Golden-angle step for an organic, non-grid scatter. */
+const IMAGE_SCATTER_GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+/** Soft tilts (deg) so expanded images read as a loose overlapping pile. */
+const IMAGE_SCATTER_TILTS = [-4.5, 3.2, -2.1, 5.0, -3.6, 2.4, -5.2, 1.8];
+
+/**
  * Use the first non-empty line of the draft (cap length) as the Metaso query.
  */
 export function deriveSearchQueryFromNoteText(text: string, maxLen = 280): string {
@@ -96,8 +106,86 @@ export function sourceStackTiltDeg(_index: number): number {
   return 0;
 }
 
+export function isImageSearchSources(sources: Pick<CanvasNode, 'type'>[]): boolean {
+  return sources.length > 0 && sources.every((s) => s.type === 'image');
+}
+
 /**
- * Collapse sources into a photo stack beside the answer, or expand back to the vertical lane.
+ * Expanded image layout: a roomy, lightly overlapping scatter
+ * (not a vertical lane, not a tight pile on top of the parent).
+ */
+export function sourceImageScatterPos(
+  base: { x: number; y: number },
+  index: number,
+  count: number,
+  anchorHeight = DEFAULT_ANCHOR_HEIGHT,
+): { x: number; y: number } {
+  const centerX = base.x + IMAGE_SCATTER_OFFSET_X;
+  const centerY = base.y + Math.max(anchorHeight, 1) / 2;
+  const n = Math.max(count, 1);
+
+  if (n === 1) {
+    return {
+      x: Math.round(centerX - SOURCE_CARD_WIDTH / 2),
+      y: Math.round(centerY - SOURCE_CARD_HEIGHT / 2),
+    };
+  }
+
+  // Wider ring: air between cards, only light overlap; grows with count.
+  const maxR = 170 + Math.min(n, 8) * 34;
+  // Keep the first card off-center so nothing parks on the cluster origin.
+  const r = maxR * Math.sqrt((index + 0.9) / (n + 0.35));
+  const angle = index * IMAGE_SCATTER_GOLDEN_ANGLE - Math.PI / 6;
+  return {
+    x: Math.round(centerX + Math.cos(angle) * r - SOURCE_CARD_WIDTH / 2),
+    y: Math.round(centerY + Math.sin(angle) * r - SOURCE_CARD_HEIGHT / 2),
+  };
+}
+
+/** Slight tilt for expanded image scatter; stacked deck stays upright via `sourceStackTiltDeg`. */
+export function sourceImageScatterTiltDeg(index: number): number {
+  return IMAGE_SCATTER_TILTS[((index % IMAGE_SCATTER_TILTS.length) + IMAGE_SCATTER_TILTS.length) % IMAGE_SCATTER_TILTS.length]!;
+}
+
+function defaultExpandedPos(
+  base: { x: number; y: number },
+  index: number,
+  count: number,
+  anchorHeight: number,
+  imageScatter: boolean,
+): { x: number; y: number } {
+  if (imageScatter) {
+    return sourceImageScatterPos(base, index, count, anchorHeight);
+  }
+  return {
+    x: base.x + SOURCE_LANE_OFFSET_X,
+    y: sourceCardY(base.y, index, count, anchorHeight),
+  };
+}
+
+function resolveExpandedPos(
+  source: CanvasNode,
+  base: { x: number; y: number },
+  index: number,
+  count: number,
+  anchorHeight: number,
+  imageScatter: boolean,
+): { x: number; y: number } {
+  const ox = source.webSearchExpandedOffsetX;
+  const oy = source.webSearchExpandedOffsetY;
+  if (typeof ox === 'number' && typeof oy === 'number' && Number.isFinite(ox) && Number.isFinite(oy)) {
+    return { x: base.x + ox, y: base.y + oy };
+  }
+  return defaultExpandedPos(base, index, count, anchorHeight, imageScatter);
+}
+
+/**
+ * Collapse sources into a photo stack, or expand:
+ * - image hits → loose overlapping scatter (or last user layout)
+ * - text sources → vertical lane (or last user layout)
+ *
+ * On collapse, each source's current position is stored as an offset from the parent
+ * so a later expand restores manual rearrangements instead of the algorithm defaults.
  */
 export async function setWebSearchSourcesCollapsed(
   parentId: string,
@@ -117,18 +205,35 @@ export async function setWebSearchSourcesCollapsed(
   if (sources.length === 0) return 0;
 
   const anchorHeight = options?.anchorHeight ?? parent.height ?? DEFAULT_ANCHOR_HEIGHT;
-  const base = { x: parent.x, y: parent.y };
+  const imageScatter = isImageSearchSources(sources);
 
   await db.transaction('rw', db.nodes, async () => {
+    // Prefer live DB rows so expand restores offsets written on the previous collapse,
+    // even if the caller's in-memory `nodes` snapshot is briefly stale.
+    const freshParent = (await db.nodes.get(parentId)) ?? parent;
+    const base = { x: freshParent.x, y: freshParent.y };
     await db.nodes.update(parentId, { webSearchSourcesCollapsed: collapsed });
     for (let i = 0; i < sources.length; i++) {
-      const pos = collapsed
-        ? sourceCardStackPos(base, i, sources.length, anchorHeight)
-        : {
-            x: base.x + SOURCE_LANE_OFFSET_X,
-            y: sourceCardY(base.y, i, sources.length, anchorHeight),
-          };
-      await db.nodes.update(sources[i]!.id, pos);
+      const listed = sources[i]!;
+      const source = (await db.nodes.get(listed.id)) ?? listed;
+      if (collapsed) {
+        const stackPos = sourceCardStackPos(base, i, sources.length, anchorHeight);
+        await db.nodes.update(source.id, {
+          ...stackPos,
+          webSearchExpandedOffsetX: source.x - base.x,
+          webSearchExpandedOffsetY: source.y - base.y,
+        });
+      } else {
+        const pos = resolveExpandedPos(
+          source,
+          base,
+          i,
+          sources.length,
+          anchorHeight,
+          imageScatter,
+        );
+        await db.nodes.update(source.id, pos);
+      }
     }
   });
   return sources.length;
@@ -149,29 +254,39 @@ export async function spawnWebSearchCardsFromPages(
   base: { x: number; y: number },
   pages: MetasoWebpage[],
   activeCanvasId: string,
-  options?: { staggerMs?: number; anchorHeight?: number },
+  options?: {
+    staggerMs?: number;
+    anchorHeight?: number;
+    /** Offset into a shared vertical lane (e.g. after image cards). */
+    indexOffset?: number;
+    /** Total cards in the lane for vertical centering; defaults to this batch size + offset. */
+    laneCount?: number;
+  },
 ): Promise<void> {
   const staggerMs = options?.staggerMs ?? DEFAULT_STAGGER_MS;
   const anchorHeight = options?.anchorHeight ?? DEFAULT_ANCHOR_HEIGHT;
+  const indexOffset = options?.indexOffset ?? 0;
   const list = pages.filter((p) => (p.title || p.snippet || p.link).trim().length > 0);
+  const laneCount = options?.laneCount ?? indexOffset + list.length;
 
   for (let i = 0; i < list.length; i++) {
     if (i > 0) {
       await new Promise((r) => setTimeout(r, staggerMs));
     }
+    const laneIndex = indexOffset + i;
     const id = crypto.randomUUID();
     await db.nodes.add({
       id,
       canvasId: activeCanvasId,
       type: 'text',
-      content: pageToMarkdown(list[i]!, i + 1),
+      content: pageToMarkdown(list[i]!, laneIndex + 1),
       x: base.x + SOURCE_LANE_OFFSET_X,
-      y: sourceCardY(base.y, i, list.length, anchorHeight),
+      y: sourceCardY(base.y, laneIndex, laneCount, anchorHeight),
       width: SOURCE_CARD_WIDTH,
       height: SOURCE_CARD_HEIGHT,
       layout: 2,
       webSearchParentId: sourceNodeId,
-      webSearchIndex: i,
+      webSearchIndex: laneIndex,
     });
     await db.edges.add({
       id: crypto.randomUUID(),
@@ -183,43 +298,62 @@ export async function spawnWebSearchCardsFromPages(
 }
 
 /**
- * Create image nodes from Metaso image search hits in the same vertical lane as webpage sources.
+ * Create image nodes from Metaso hits as a loose overlapping scatter beside the parent.
  */
 export async function spawnWebSearchCardsFromImages(
   sourceNodeId: string,
   base: { x: number; y: number },
   images: MetasoImage[],
   activeCanvasId: string,
-  options?: { staggerMs?: number; anchorHeight?: number },
+  options?: {
+    staggerMs?: number;
+    anchorHeight?: number;
+    indexOffset?: number;
+    laneCount?: number;
+  },
 ): Promise<void> {
   const staggerMs = options?.staggerMs ?? DEFAULT_STAGGER_MS;
   const anchorHeight = options?.anchorHeight ?? DEFAULT_ANCHOR_HEIGHT;
+  const indexOffset = options?.indexOffset ?? 0;
   const list = images
-    .map((img) => ({
-      img,
-      url: resolveMetasoImageUrl(img),
-      title: (img.title || '').replace(/\s+/g, ' ').trim(),
-    }))
+    .map((img) => {
+      const url = resolveMetasoImageUrl(img);
+      const page =
+        typeof img.link === 'string' && /^https?:\/\//i.test(img.link.trim())
+          ? img.link.trim()
+          : '';
+      // Prefer the host page; fall back to the image URL so the card always has a jump target.
+      const sourceUrl = page && page !== url ? page : page || url;
+      return {
+        url,
+        sourceUrl,
+        title: (img.title || '').replace(/\s+/g, ' ').trim(),
+      };
+    })
     .filter((row) => row.url.length > 0);
+  const scatterCount = options?.laneCount ?? indexOffset + list.length;
 
   for (let i = 0; i < list.length; i++) {
     if (i > 0) {
       await new Promise((r) => setTimeout(r, staggerMs));
     }
+    const laneIndex = indexOffset + i;
     const row = list[i]!;
     const id = crypto.randomUUID();
+    const pos = sourceImageScatterPos(base, laneIndex, scatterCount, anchorHeight);
     await db.nodes.add({
       id,
       canvasId: activeCanvasId,
       type: 'image',
       content: row.url,
       description: row.title || undefined,
-      x: base.x + SOURCE_LANE_OFFSET_X,
-      y: sourceCardY(base.y, i, list.length, anchorHeight),
+      sourceUrl: row.sourceUrl || undefined,
+      x: pos.x,
+      y: pos.y,
       width: SOURCE_CARD_WIDTH,
       height: SOURCE_CARD_HEIGHT,
       webSearchParentId: sourceNodeId,
-      webSearchIndex: i,
+      webSearchIndex: laneIndex,
     });
     await db.edges.add({
       id: crypto.randomUUID(),

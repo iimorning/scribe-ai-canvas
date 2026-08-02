@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { Check, Globe, Loader2, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { colorPresets, fontPresets } from '../../constants/presets';
 import { isDarkNodeBackground } from '../../utils/nodePaletteTone';
 import { useDraggable } from '../../hooks/useDraggable';
@@ -33,6 +33,10 @@ export interface DraggableNodeProps {
   glassSurface?: boolean;
   /** Note/text: card body pointer sets which node Ctrl+C duplicates (not from checkbox). */
   onStickyActivate?: (id: string) => void;
+  /** Note/text: right-side control to web-search the note (with images). */
+  onWebSearch?: () => void;
+  isWebSearchLoading?: boolean;
+  isWebSearchDisabled?: boolean;
 }
 
 export const DraggableNode: React.FC<DraggableNodeProps> = ({ 
@@ -44,6 +48,9 @@ export const DraggableNode: React.FC<DraggableNodeProps> = ({
   zIndexOverride,
   glassSurface = false,
   onStickyActivate,
+  onWebSearch,
+  isWebSearchLoading = false,
+  isWebSearchDisabled = false,
 }) => {
   const { t } = useTranslation();
   const scaleRef = useRef(scale);
@@ -125,19 +132,52 @@ export const DraggableNode: React.FC<DraggableNodeProps> = ({
           <Check className="w-3 h-3" />
         </button>
       )}
-      <button 
-        onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); onLink(id); }}
-        className={`absolute top-1/2 -mt-3 -right-3 w-6 h-6 bg-white border border-[#E6E4DF] rounded-full flex items-center justify-center text-[#8c8a84] hover:text-[#C2410C] hover:border-[#C2410C] transition-all z-10 shadow-sm ${
+      <div
+        className={`absolute top-1/2 -translate-y-1/2 -right-3 flex flex-col gap-1 z-10 transition-all ${
           hideChrome
             ? '!opacity-0 pointer-events-none'
-            : isSelected
+            : isSelected || isWebSearchLoading
               ? 'opacity-100'
               : 'opacity-0 group-hover:opacity-100'
         }`}
-        title={t('canvas.link_note')}
       >
-        <Plus className="w-4 h-4" />
-      </button>
+        <button
+          type="button"
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            onLink(id);
+          }}
+          className="w-6 h-6 bg-white border border-[#E6E4DF] rounded-full flex items-center justify-center text-[#8c8a84] hover:text-[#C2410C] hover:border-[#C2410C] transition-all shadow-sm"
+          title={t('canvas.link_note')}
+        >
+          <Plus className="w-4 h-4" />
+        </button>
+        {onWebSearch ? (
+          <button
+            type="button"
+            data-testid="note-web-search"
+            disabled={isWebSearchDisabled || isWebSearchLoading}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!isWebSearchDisabled && !isWebSearchLoading) onWebSearch();
+            }}
+            className="w-6 h-6 bg-white border border-[#E6E4DF] rounded-full flex items-center justify-center text-[#8c8a84] hover:text-[#C2410C] hover:border-[#C2410C] transition-all shadow-sm disabled:opacity-40 disabled:pointer-events-none"
+            title={t('nodes.search_while_writing')}
+            aria-label={t('nodes.search_while_writing')}
+          >
+            {isWebSearchLoading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#C2410C]" />
+            ) : (
+              <Globe className="w-3.5 h-3.5" />
+            )}
+          </button>
+        ) : null}
+      </div>
       <div
         className={`absolute -bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1 transition-opacity z-10 ${
           hideChrome

@@ -1,8 +1,9 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Sparkles } from 'lucide-react';
-import type { NodeContentProps } from '../../types';
+import type { NoteNodeProps } from '../../types';
 import { NoteBody } from '../NoteBody';
+import { WebSearchSourcesToggle } from '../../WebSearchSourcesToggle';
 
 /** 0/2/3 经典与 neo；1 毛玻璃。与 ThemeNode 相同：单层外壳 + `transition-all duration-500` 做形态过渡。 */
 export type NoteChromeLayout = 0 | 1 | 2 | 3;
@@ -16,7 +17,10 @@ export function NoteLayoutStandard({
   editingNodeId,
   setEditingNodeId,
   layout,
-}: NodeContentProps & { layout: NoteChromeLayout }) {
+  webSearchSourceCount = 0,
+  webSearchSourcesCollapsed = false,
+  onToggleWebSearchSources,
+}: NoteNodeProps & { layout: NoteChromeLayout }) {
   const { t } = useTranslation();
   const isGlass = layout === 1;
 
@@ -64,6 +68,12 @@ export function NoteLayoutStandard({
           />
         </>
       )}
+
+      <WebSearchSourcesToggle
+        count={webSearchSourceCount}
+        collapsed={webSearchSourcesCollapsed}
+        onToggle={onToggleWebSearchSources}
+      />
 
       {isGlass ? (
         <header className="note-chrome relative z-10 flex shrink-0 items-center justify-between px-6 pt-6 mb-4">

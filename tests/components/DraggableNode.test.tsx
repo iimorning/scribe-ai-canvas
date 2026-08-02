@@ -11,6 +11,7 @@ vi.mock('react-i18next', () => ({
         'canvas.delete_note': 'Delete',
         'canvas.cycle_layout': 'Layout',
         'canvas.select_note': 'Select',
+        'nodes.search_while_writing': 'Web search',
       }[key] ?? key),
   }),
 }));
@@ -39,8 +40,9 @@ describe('DraggableNode', () => {
   it('编辑态隐藏外链、布局、删除、缩放手柄与选择圈（避免 group-hover 再次点亮）', () => {
     renderNode({ isEditing: true, isSelected: true });
 
-    expect(screen.getByTitle('Link')).toHaveClass('pointer-events-none');
-    expect(screen.getByTitle('Link')).toHaveClass('!opacity-0');
+    const rightChrome = screen.getByTitle('Link').parentElement;
+    expect(rightChrome).toHaveClass('pointer-events-none');
+    expect(rightChrome).toHaveClass('!opacity-0');
     const bottomBar = screen.getByTitle('Layout').parentElement;
     expect(bottomBar).toHaveClass('pointer-events-none');
     expect(bottomBar).toHaveClass('!opacity-0');
@@ -55,8 +57,17 @@ describe('DraggableNode', () => {
 
   it('非编辑且选中时外链按钮常态可见', () => {
     renderNode({ isEditing: false, isSelected: true });
-    expect(screen.getByTitle('Link')).toHaveClass('opacity-100');
-    expect(screen.getByTitle('Link')).not.toHaveClass('pointer-events-none');
+    const rightChrome = screen.getByTitle('Link').parentElement;
+    expect(rightChrome).toHaveClass('opacity-100');
+    expect(rightChrome).not.toHaveClass('pointer-events-none');
+  });
+
+  it('提供 onWebSearch 时显示右侧联网搜索按钮', () => {
+    const onWebSearch = vi.fn();
+    renderNode({ isEditing: false, isSelected: true, onWebSearch });
+    expect(screen.getByTestId('note-web-search')).toBeInTheDocument();
+    screen.getByTestId('note-web-search').click();
+    expect(onWebSearch).toHaveBeenCalledTimes(1);
   });
 
   it('编辑态不显示选中描边 ring', () => {

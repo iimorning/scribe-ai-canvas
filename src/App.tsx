@@ -46,6 +46,7 @@ import {
 import {
   listWebSearchSourcesForParent,
   setWebSearchSourcesCollapsed,
+  sourceImageScatterTiltDeg,
   sourceStackTiltDeg,
   sourceStackZIndex,
   webSearchSourceIndex,
@@ -376,6 +377,8 @@ export default function App() {
     clearPendingQuote,
     expandBookSelection,
     expandingBookNodeId,
+    searchNoteWithMedia,
+    searchingNoteNodeId,
     handlePublish,
     triggerAgentAnalysis,
     handleAiSubmit,
@@ -403,7 +406,7 @@ export default function App() {
   const webSearchSourceCountByParent = React.useMemo(() => {
     const map = new Map<string, number>();
     for (const node of dynamicNodes) {
-      if (node.type !== 'ai') continue;
+      if (node.type !== 'ai' && node.type !== 'note' && node.type !== 'text') continue;
       const count = listWebSearchSourcesForParent(node.id, dynamicNodes, edges).length;
       if (count > 0) map.set(node.id, count);
     }
@@ -661,10 +664,19 @@ export default function App() {
                     ? edges.find((e) => e.to === node.id)?.from
                     : undefined);
                 const stackedParent = stackedParentId
-                  ? dynamicNodes.find((n) => n.id === stackedParentId && n.type === 'ai')
+                  ? dynamicNodes.find(
+                      (n) =>
+                        n.id === stackedParentId &&
+                        (n.type === 'ai' || n.type === 'note' || n.type === 'text'),
+                    )
                   : undefined;
                 const webStacked =
                   !!stackedParent?.webSearchSourcesCollapsed &&
+                  webSearchSourceCountByParent.has(stackedParent.id);
+                const webImageScatter =
+                  !webStacked &&
+                  node.type === 'image' &&
+                  !!stackedParent &&
                   webSearchSourceCountByParent.has(stackedParent.id);
 
                 const bookHub = node.bookExpandParentId
@@ -684,11 +696,13 @@ export default function App() {
                   (node.type === 'document') ? 1 : 0;
                 if (webStacked) {
                   rotation = sourceStackTiltDeg(webSearchSourceIndex(node));
+                } else if (webImageScatter) {
+                  rotation = sourceImageScatterTiltDeg(webSearchSourceIndex(node));
                 } else if (bookStacked) {
                   rotation = 0;
                 }
 
-                const stackZ = webStacked
+                const stackZ = webStacked || webImageScatter
                   ? sourceStackZIndex(webSearchSourceIndex(node))
                   : bookStacked
                     ? bookExpandStackZIndex(bookExpandBranchIndex(node))
@@ -731,6 +745,15 @@ export default function App() {
                           }
                         : undefined
                     }
+                    onWebSearch={
+                      node.type === 'note' || node.type === 'text'
+                        ? () => {
+                            void searchNoteWithMedia(node.id);
+                          }
+                        : undefined
+                    }
+                    isWebSearchLoading={searchingNoteNodeId === node.id}
+                    isWebSearchDisabled={isAnyAiBusy && searchingNoteNodeId !== node.id}
                 >
                   <NodeRenderer
                     node={node}

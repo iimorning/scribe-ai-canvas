@@ -7,7 +7,9 @@ import {
   setWebSearchSourcesCollapsed,
   sourceCardStackPos,
   sourceCardY,
+  sourceImageScatterPos,
   spawnWebSearchCardsFromImages,
+  SOURCE_CARD_WIDTH,
   SOURCE_LANE_OFFSET_X,
   SOURCE_ROW_GAP_Y,
   SOURCE_STACK_STEP,
@@ -214,13 +216,28 @@ describe('setWebSearchSourcesCollapsed', () => {
   });
 });
 
+describe('sourceImageScatterPos', () => {
+  it('spreads beside the parent (not a vertical lane, not on top of it)', () => {
+    const base = { x: 0, y: 0 };
+    const a = sourceImageScatterPos(base, 0, 4, 200);
+    const b = sourceImageScatterPos(base, 1, 4, 200);
+    // Stay to the right of a typical note width so the parent stays readable.
+    expect(Math.min(a.x, b.x)).toBeGreaterThan(300);
+    // Not a single vertical column.
+    expect(a.x).not.toBe(b.x);
+    expect(a.x).not.toBe(SOURCE_LANE_OFFSET_X);
+    // Still a cluster, not fully separated tiles.
+    expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeLessThan(SOURCE_CARD_WIDTH * 1.35);
+  });
+});
+
 describe('spawnWebSearchCardsFromImages', () => {
   beforeEach(async () => {
     await db.nodes.clear();
     await db.edges.clear();
   });
 
-  it('creates image nodes linked to the answer card', async () => {
+  it('creates image nodes in a loose scatter beside the parent', async () => {
     await db.nodes.add({ id: 'ai-img', type: 'ai', content: 'ack', x: 10, y: 20 });
     await spawnWebSearchCardsFromImages(
       'ai-img',
@@ -228,6 +245,7 @@ describe('spawnWebSearchCardsFromImages', () => {
       [
         { title: 'A', link: 'https://example.com/a', thumbnail: 'https://cdn.example/a.jpg' },
         { title: 'B', link: 'https://cdn.example/b.jpg' },
+        { title: 'C', thumbnail: 'https://cdn.example/c.jpg' },
       ],
       'canvas-1',
       { staggerMs: 0, anchorHeight: 280 },
@@ -237,13 +255,102 @@ describe('spawnWebSearchCardsFromImages', () => {
     const images = nodes
       .filter((n) => n.type === 'image')
       .sort((a, b) => (a.webSearchIndex ?? 0) - (b.webSearchIndex ?? 0));
-    expect(images).toHaveLength(2);
+    expect(images).toHaveLength(3);
     expect(images[0]?.content).toBe('https://cdn.example/a.jpg');
+    expect(images[0]?.sourceUrl).toBe('https://example.com/a');
     expect(images[0]?.webSearchParentId).toBe('ai-img');
-    expect(images[1]?.content).toBe('https://cdn.example/b.jpg');
+    expect(images[0]).toMatchObject(sourceImageScatterPos({ x: 10, y: 20 }, 0, 3, 280));
+    expect(images[2]).toMatchObject(sourceImageScatterPos({ x: 10, y: 20 }, 2, 3, 280));
+    // Scatter: not all sharing one lane x.
+    expect(new Set(images.map((img) => img.x)).size).toBeGreaterThan(1);
 
     const listed = listWebSearchSourcesForParent('ai-img', nodes, await db.edges.toArray());
-    expect(listed).toHaveLength(2);
+    expect(listed).toHaveLength(3);
     expect(listed.every((n) => n.type === 'image')).toBe(true);
+  });
+
+  it('stacks then expands images back to the scatter (not a vertical lane)', async () => {
+    await db.nodes.add({
+      id: 'note-img',
+      canvasId: 'default',
+      type: 'note',
+      content: '古着',
+      x: 40,
+      y: 60,
+      height: 200,
+    });
+    for (let i = 0; i < 3; i++) {
+      const pos = sourceImageScatterPos({ x: 40, y: 60 }, i, 3, 200);
+      await db.nodes.add({
+        id: `img${i}`,
+        canvasId: 'default',
+        type: 'image',
+        content: `https://cdn.example/${i}.jpg`,
+        x: pos.x,
+        y: pos.y,
+        webSearchParentId: 'note-img',
+        webSearchIndex: i,
+      });
+      await db.edges.add({ id: `ie${i}`, canvasId: 'default', from: 'note-img', to: `img${i}` });
+    }
+
+    await setWebSearchSourcesCollapsed('note-img', true, { anchorHeight: 200 });
+    expect(await db.nodes.get('img0')).toMatchObject(
+      sourceCardStackPos({ x: 40, y: 60 }, 0, 3, 200),
+    );
+
+    await setWebSearchSourcesCollapsed('note-img', false, { anchorHeight: 200 });
+    expect(await db.nodes.get('img1')).toMatchObject(
+      sourceImageScatterPos({ x: 40, y: 60 }, 1, 3, 200),
+    );
+    expect((await db.nodes.get('img0'))!.x).not.toBe((await db.nodes.get('img1'))!.x);
+  });
+
+  it('restores user-adjusted expand positions after collapse', async () => {
+    await db.nodes.add({
+      id: 'note-drag',
+      canvasId: 'default',
+      type: 'note',
+      content: '古着',
+      x: 100,
+      y: 100,
+      height: 200,
+    });
+    await db.nodes.add({
+      id: 'img-a',
+      canvasId: 'default',
+      type: 'image',
+      content: 'https://cdn.example/a.jpg',
+      x: 500,
+      y: 120,
+      webSearchParentId: 'note-drag',
+      webSearchIndex: 0,
+    });
+    await db.nodes.add({
+      id: 'img-b',
+      canvasId: 'default',
+      type: 'image',
+      content: 'https://cdn.example/b.jpg',
+      x: 700,
+      y: 260,
+      webSearchParentId: 'note-drag',
+      webSearchIndex: 1,
+    });
+    await db.edges.add({ id: 'de0', canvasId: 'default', from: 'note-drag', to: 'img-a' });
+    await db.edges.add({ id: 'de1', canvasId: 'default', from: 'note-drag', to: 'img-b' });
+
+    // User dragged cards, then collapsed.
+    await setWebSearchSourcesCollapsed('note-drag', true, { anchorHeight: 200 });
+    expect((await db.nodes.get('img-a'))?.webSearchExpandedOffsetX).toBe(400);
+    expect((await db.nodes.get('img-a'))?.webSearchExpandedOffsetY).toBe(20);
+    expect((await db.nodes.get('img-b'))?.webSearchExpandedOffsetX).toBe(600);
+    expect((await db.nodes.get('img-b'))?.webSearchExpandedOffsetY).toBe(160);
+
+    // Parent moved while stacked — expand should keep relative layout.
+    await db.nodes.update('note-drag', { x: 150, y: 180 });
+    await setWebSearchSourcesCollapsed('note-drag', false, { anchorHeight: 200 });
+
+    expect(await db.nodes.get('img-a')).toMatchObject({ x: 550, y: 200 });
+    expect(await db.nodes.get('img-b')).toMatchObject({ x: 750, y: 340 });
   });
 });

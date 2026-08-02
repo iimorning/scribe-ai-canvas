@@ -6,6 +6,13 @@ export interface NodeContentProps {
   setEditingNodeId: (id: string | null) => void;
 }
 
+export interface NoteNodeProps extends NodeContentProps {
+  /** Linked web-search image/source cards exist beside this note. */
+  webSearchSourceCount?: number;
+  webSearchSourcesCollapsed?: boolean;
+  onToggleWebSearchSources?: () => void;
+}
+
 export interface ThemeNodeProps extends NodeContentProps {
   /** Book-expand branch cards linked from this theme hub. */
   bookExpandBranchCount?: number;

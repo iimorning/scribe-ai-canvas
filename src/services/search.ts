@@ -24,9 +24,11 @@ export interface MetasoWebpage {
 
 export interface MetasoImage {
   title?: string;
-  /** Source page or image URL */
-  link: string;
-  /** Prefer this for display when present */
+  /** Source page URL (when available) */
+  link?: string;
+  /** Direct image URL from Metaso (`imageUrl`) */
+  imageUrl?: string;
+  /** Alternate thumbnail / preview URL */
   thumbnail?: string;
 }
 
@@ -48,20 +50,92 @@ function isTauriRuntime(): boolean {
   );
 }
 
-/** Prefer thumbnail, then a direct image link. */
+function asHttpUrl(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  const s = raw.trim();
+  return /^https?:\/\//i.test(s) ? s : '';
+}
+
+function looksLikeImageUrl(url: string): boolean {
+  if (!url) return false;
+  // Strip query/hash for extension checks; many CDNs omit extensions but are still images.
+  const path = url.split('?')[0]?.split('#')[0] ?? url;
+  return /\.(avif|bmp|gif|jpe?g|png|svg|webp)(\b|$)/i.test(path) || /\/image|img\.|cdn\.|pic\.|thumb/i.test(url);
+}
+
+/** Prefer Metaso `imageUrl`, then thumbnail, then an image-looking link. */
 export function resolveMetasoImageUrl(img: MetasoImage): string {
-  const thumb = (img.thumbnail || '').trim();
-  if (/^https?:\/\//i.test(thumb)) return thumb;
-  const link = (img.link || '').trim();
-  if (/^https?:\/\//i.test(link)) return link;
-  return '';
+  const imageUrl = asHttpUrl(img.imageUrl);
+  if (imageUrl) return imageUrl;
+  const thumb = asHttpUrl(img.thumbnail);
+  if (thumb) return thumb;
+  const link = asHttpUrl(img.link);
+  if (link && looksLikeImageUrl(link)) return link;
+  // Last resort: some payloads put the image in `link` without a clear extension.
+  return link;
+}
+
+function normalizeMetasoImage(raw: unknown): MetasoImage | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const imageUrl =
+    asHttpUrl(o.imageUrl) ||
+    asHttpUrl(o.image_url) ||
+    asHttpUrl(o.image) ||
+    asHttpUrl(o.url) ||
+    asHttpUrl(o.thumbnail) ||
+    asHttpUrl(o.coverImage);
+  const link =
+    asHttpUrl(o.sourceUrl) ||
+    asHttpUrl(o.source_url) ||
+    asHttpUrl(o.link) ||
+    asHttpUrl(o.pageUrl) ||
+    '';
+  const thumbnail = asHttpUrl(o.thumbnail) || asHttpUrl(o.coverImage) || '';
+  const title =
+    typeof o.title === 'string'
+      ? o.title
+      : typeof o.description === 'string'
+        ? o.description
+        : undefined;
+
+  const normalized: MetasoImage = {
+    title,
+    link: link || undefined,
+    imageUrl: imageUrl || undefined,
+    thumbnail: thumbnail || undefined,
+  };
+  if (!resolveMetasoImageUrl(normalized)) return null;
+  return normalized;
+}
+
+/** Normalize API payloads so callers always see `images[].imageUrl`. */
+export function normalizeMetasoSearchResponse(raw: unknown): MetasoSearchResponse {
+  const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const webpages = Array.isArray(o.webpages) ? (o.webpages as MetasoWebpage[]) : [];
+  const rawImages = Array.isArray(o.images) ? o.images : [];
+  const images = rawImages
+    .map((item) => normalizeMetasoImage(item))
+    .filter((item): item is MetasoImage => item != null);
+
+  if (rawImages.length > 0 && images.length === 0) {
+    console.warn(`${LOG_PREFIX} received ${rawImages.length} image hits but none had a usable URL`, {
+      sampleKeys: Object.keys((rawImages[0] as object) ?? {}),
+    });
+  }
+
+  return {
+    credits: typeof o.credits === 'number' ? o.credits : 0,
+    total: typeof o.total === 'number' ? o.total : images.length || webpages.length,
+    webpages,
+    images,
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Core search function
 // ---------------------------------------------------------------------------
 
-const METASO_ENDPOINT = 'https://metaso.cn/api/v1/search';
 const SEARCH_TIMEOUT_MS = 15_000;
 
 /**
@@ -94,7 +168,7 @@ export async function metasoSearch(
         scope,
         size,
       });
-      return JSON.parse(json) as MetasoSearchResponse;
+      return normalizeMetasoSearchResponse(JSON.parse(json));
     } catch (e) {
       console.error(`${LOG_PREFIX} Tauri metaso_search failed`, e);
       throw e instanceof Error ? e : new Error(String(e));
@@ -112,6 +186,7 @@ export async function metasoSearch(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        Accept: 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
@@ -128,7 +203,7 @@ export async function metasoSearch(
       throw new Error(`Metaso search HTTP ${response.status}: ${text.slice(0, 200)}`);
     }
 
-    return (await response.json()) as MetasoSearchResponse;
+    return normalizeMetasoSearchResponse(await response.json());
   } finally {
     clearTimeout(timer);
   }
@@ -156,9 +231,8 @@ export function buildSearchContext(results: MetasoSearchResponse): string {
   images.forEach((img, idx) => {
     const url = resolveMetasoImageUrl(img);
     const title = (img.title || 'Image').trim();
-    fragments.push(
-      `[Image ${idx + 1}: ${title}]${url ? `(${url})` : ''}${img.link && img.link !== url ? `\nPage: ${img.link}` : ''}`,
-    );
+    const page = img.link && img.link !== url ? `\nPage: ${img.link}` : '';
+    fragments.push(`[Image ${idx + 1}: ${title}]${url ? `(${url})` : ''}${page}`);
   });
 
   return [

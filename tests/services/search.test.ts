@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { metasoSearch, buildSearchContext, resolveMetasoImageUrl } from '../../src/services/search';
+import {
+  metasoSearch,
+  buildSearchContext,
+  resolveMetasoImageUrl,
+  normalizeMetasoSearchResponse,
+} from '../../src/services/search';
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -51,13 +56,42 @@ describe('metasoSearch', () => {
   });
 
   describe('resolveMetasoImageUrl', () => {
-    it('prefers thumbnail over link', () => {
+    it('prefers Metaso imageUrl over thumbnail/link', () => {
+      expect(
+        resolveMetasoImageUrl({
+          imageUrl: 'https://cdn.example/real.jpg',
+          thumbnail: 'https://cdn.example/thumb.jpg',
+          link: 'https://page.example',
+        }),
+      ).toBe('https://cdn.example/real.jpg');
+    });
+
+    it('prefers thumbnail over bare page link', () => {
       expect(
         resolveMetasoImageUrl({
           link: 'https://page.example',
           thumbnail: 'https://cdn.example/a.jpg',
         }),
       ).toBe('https://cdn.example/a.jpg');
+    });
+  });
+
+  describe('normalizeMetasoSearchResponse', () => {
+    it('maps imageUrl / sourceUrl from Metaso image payloads', () => {
+      const normalized = normalizeMetasoSearchResponse({
+        credits: 1,
+        total: 1,
+        images: [
+          {
+            title: '古着',
+            imageUrl: 'https://img.example/vintage.jpg',
+            sourceUrl: 'https://page.example/article',
+          },
+        ],
+      });
+      expect(normalized.images).toHaveLength(1);
+      expect(resolveMetasoImageUrl(normalized.images![0]!)).toBe('https://img.example/vintage.jpg');
+      expect(normalized.images![0]!.link).toBe('https://page.example/article');
     });
   });
 
@@ -100,10 +134,10 @@ describe('metasoSearch', () => {
         '/api/metaso/api/v1/search',
         expect.objectContaining({
           method: 'POST',
-          headers: {
+          headers: expect.objectContaining({
             'Content-Type': 'application/json',
             Authorization: 'Bearer sk-metaso-test',
-          },
+          }),
           body: JSON.stringify({ q: 'AI research', scope: 'webpage', size: 5 }),
         })
       );

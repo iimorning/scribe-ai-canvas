@@ -516,7 +516,14 @@ describe('useAiActions', () => {
       expect(parentRow?.followUpSent).not.toBe(true);
     });
 
-    it('「联网搜索」时调用秘塔并生成子节点与资料卡，不调用对话模型', async () => {
+    it('「联网搜索」时先用 AI 提炼检索词，再调用秘塔并生成资料卡', async () => {
+      vi.mocked(callUniversalAI).mockResolvedValueOnce(
+        JSON.stringify({
+          topic: '上一轮主题',
+          webQuery: '上一轮 AI 正文',
+          imageQuery: '上一轮 AI 正文',
+        }),
+      );
       vi.mocked(metasoSearch).mockResolvedValueOnce({
         credits: 0,
         total: 1,
@@ -542,7 +549,7 @@ describe('useAiActions', () => {
         await result.current.submitAiThreadFollowUp('parent-ai', '联网搜索');
       });
 
-      expect(callUniversalAI).not.toHaveBeenCalled();
+      expect(callUniversalAI).toHaveBeenCalled();
       expect(metasoSearch).toHaveBeenCalledWith('上一轮 AI 正文', { apiKey: 'metaso-k', scope: 'webpage' });
 
       const allNodes = await db.nodes.toArray();

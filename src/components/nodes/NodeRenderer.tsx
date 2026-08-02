@@ -77,6 +77,11 @@ export function NodeRenderer({
           node={node}
           editingNodeId={editingNodeId}
           setEditingNodeId={setEditingNodeId}
+          webSearchSourceCount={webSearchSourceCount}
+          webSearchSourcesCollapsed={webSearchSourcesCollapsed}
+          onToggleWebSearchSources={
+            onToggleWebSearchSources ? () => onToggleWebSearchSources(node.id) : undefined
+          }
         />
       );
     case 'ai':

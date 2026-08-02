@@ -4,7 +4,8 @@ import type { AgentConfig, CanvasNode, Edge as DbEdge } from '../db';
 import type { AIConfig } from '../components/AISettingsModal';
 import type { CanvasTransform } from './useCanvasInteraction';
 import { callUniversalAI, formatAiError, maskApiKeyForLog } from '../services/ai';
-import { metasoSearch } from '../services/search';
+import { metasoSearch, resolveMetasoImageUrl } from '../services/search';
+import { deriveNoteSearchQueries } from '../services/deriveNoteSearchQueries';
 import {
   deriveSearchQueryFromNoteText,
   spawnWebSearchCardsFromImages,
@@ -76,6 +77,7 @@ export function useAiActions({
   /** Passage quoted from a book node (“Ask AI” on selection). */
   const [pendingQuote, setPendingQuote] = useState<{ text: string; sourceLabel?: string } | null>(null);
   const [expandingBookNodeId, setExpandingBookNodeId] = useState<string | null>(null);
+  const [searchingNoteNodeId, setSearchingNoteNodeId] = useState<string | null>(null);
   const [intentClarification, setIntentClarification] = useState<{
     original: string;
     options: [string, string, string];
@@ -84,6 +86,7 @@ export function useAiActions({
   const [isToolbarIntentPreflight, setIsToolbarIntentPreflight] = useState(false);
   const followUpGuardRef = useRef(false);
   const expandGuardRef = useRef(false);
+  const noteSearchGuardRef = useRef(false);
 
   const THREAD_GAP = 24;
 
@@ -98,6 +101,7 @@ export function useAiActions({
     followUpParentId !== null ||
     streamingAiNodeId !== null ||
     expandingBookNodeId !== null ||
+    searchingNoteNodeId !== null ||
     intentClarification !== null;
 
   const handlePublish = async () => {
@@ -220,6 +224,69 @@ export function useAiActions({
   };
 
   const clearPendingQuote = () => setPendingQuote(null);
+
+  /**
+   * Note chrome: AI-derive a topic, then search images only (no webpage cards).
+   */
+  const searchNoteWithMedia = async (noteNodeId: string) => {
+    if (noteSearchGuardRef.current || isAnyAiBusy) return;
+
+    const note = dynamicNodes.find((n) => n.id === noteNodeId);
+    if (!note || (note.type !== 'note' && note.type !== 'text')) return;
+
+    const key = (aiConfig.metasoApiKey || '').trim();
+    if (!key) {
+      void appAlert({ message: t('nodes.search_no_metaso_key') });
+      return;
+    }
+
+    const noteText = (note.content ?? '').trim();
+    if (!noteText) {
+      void appAlert({ message: t('nodes.search_need_note_text') });
+      return;
+    }
+
+    noteSearchGuardRef.current = true;
+    setSearchingNoteNodeId(noteNodeId);
+    try {
+      const queries = await deriveNoteSearchQueries(noteText, aiConfig, t);
+      const imageQuery = queries?.imageQuery || queries?.webQuery || '';
+      if (!imageQuery) {
+        void appAlert({ message: t('nodes.search_need_note_text') });
+        return;
+      }
+
+      const imgRes = await metasoSearch(imageQuery, { apiKey: key, scope: 'image', size: 6 });
+      const images = (imgRes.images ?? []).filter((img) => resolveMetasoImageUrl(img));
+      if (images.length === 0) {
+        void appAlert({ message: t('nodes.search_no_images') });
+        return;
+      }
+
+      const el = nodesRef.current[noteNodeId];
+      const noteH = note.height && note.height > 0 ? note.height : el?.offsetHeight ?? 200;
+
+      // Link image cards directly from the note (no intermediate AI ack card).
+      await spawnWebSearchCardsFromImages(
+        noteNodeId,
+        { x: note.x, y: note.y },
+        images,
+        activeCanvasId,
+        {
+          anchorHeight: noteH,
+          laneCount: images.length,
+          staggerMs: 160,
+        },
+      );
+    } catch (e) {
+      const msg = formatAiError(e);
+      console.error('[Spoor] searchNoteWithMedia failed', { error: msg });
+      void appAlert({ message: `${t('nodes.search_failed')}\n\n${msg}` });
+    } finally {
+      noteSearchGuardRef.current = false;
+      setSearchingNoteNodeId(null);
+    }
+  };
 
   const expandBookSelection = async (
     bookNodeId: string,
@@ -451,18 +518,22 @@ export function useAiActions({
         return;
       }
 
-      const query =
-        searchIntent.explicitQuery ||
-        deriveSearchQueryFromNoteText(previous.replace(/#{1,6}\s+/g, ''));
-      if (!query) {
-        void appAlert({ message: t('nodes.search_need_text') });
-        return;
-      }
-
       followUpGuardRef.current = true;
       setFollowUpParentId(parentNodeId);
       try {
         const isImage = searchIntent.kind === 'image';
+        let query = searchIntent.explicitQuery.trim();
+        if (!query) {
+          const derived = await deriveNoteSearchQueries(previous, aiConfig, t);
+          query = isImage
+            ? derived?.imageQuery || derived?.webQuery || ''
+            : derived?.webQuery || derived?.imageQuery || '';
+        }
+        if (!query) {
+          void appAlert({ message: t('nodes.search_need_text') });
+          return;
+        }
+
         const res = await metasoSearch(query, {
           apiKey: key,
           scope: isImage ? 'image' : 'webpage',
@@ -681,6 +752,8 @@ export function useAiActions({
     clearPendingQuote,
     expandBookSelection,
     expandingBookNodeId,
+    searchNoteWithMedia,
+    searchingNoteNodeId,
     handlePublish,
     triggerAgentAnalysis,
     handleAiSubmit,
