@@ -200,5 +200,79 @@ describe('NoteBody', () => {
     const editableAfter = container.querySelector('[contenteditable="true"]') as HTMLElement;
     expect(editableAfter.textContent).toBe('hello typed');
   });
+
+  // 守护 bf6112f 的"ASR 与用户编辑冲突"端到端契约：用户在编辑时，ASR 通过 db 写库
+  // （即父组件重渲染带新 content）；blur 时，写回 db 的必须是用户的输入，不能是 ASR 的最新值。
+  it('编辑中 ASR 改写 props.content，blur 时仍把用户输入（不是 ASR 内容）写回 db', () => {
+    persistenceDisabled.mockReturnValue(false);
+    const setEditing = vi.fn();
+    function Harness({ content }: { content: string }) {
+      return (
+        <NoteBody
+          node={{ ...baseNode, content }}
+          editingNodeId="n1"
+          setEditingNodeId={setEditing}
+          editClassName="edit"
+          viewClassName="view"
+          emptyNoteMarkdown="_empty_"
+        />
+      );
+    }
+
+    const { container, rerender } = render(<Harness content="初始内容" />);
+    const editable = container.querySelector('[contenteditable="true"]') as HTMLDivElement;
+    // 1) 用户在编辑区里输入新文字（用 textContent 在 jsdom 里更可靠）
+    editable.textContent = '用户手动输入的文字';
+
+    // 2) ASR 这时把 db 里的 content 改成了"ASR 写入"
+    rerender(<Harness content="ASR 写入" />);
+
+    // 编辑区应当保留用户输入（不能被 ASR 覆盖）
+    const editableAfter = container.querySelector('[contenteditable="true"]') as HTMLDivElement;
+    expect(editableAfter.textContent).toBe('用户手动输入的文字');
+
+    // 3) 用户 blur
+    fireEvent.blur(editableAfter);
+
+    // 关键断言：写库的必须是"用户手动输入的文字"，不能是"ASR 写入"
+    expect(updateMock).toHaveBeenCalledWith('n1', { content: '用户手动输入的文字' });
+    expect(setEditing).toHaveBeenCalledWith(null);
+  });
+
+  // 配套守护：编辑中 ASR 不改 props.content（极少见）时，编辑器 seed 一开始的内容
+  // 后不再被任何 props 变化干扰（连续重渲染 3 次都是同一个 props 仍不动）。
+  it('连续多次 props 重渲染不触发 seed-once 重置（光标不会因为父组件频繁更新而跳到开头）', () => {
+    function Harness({ tick, content }: { tick: number; content: string }) {
+      return (
+        <div>
+          <span data-testid="tick">{tick}</span>
+          <NoteBody
+            node={{ ...baseNode, content }}
+            editingNodeId="n1"
+            setEditingNodeId={vi.fn()}
+            editClassName="edit"
+            viewClassName="view"
+            emptyNoteMarkdown="_empty_"
+          />
+        </div>
+      );
+    }
+
+    const { container, rerender } = render(<Harness tick={0} content="起始" />);
+    const editable = container.querySelector('[contenteditable="true"]') as HTMLElement;
+    expect(editable.textContent).toBe('起始');
+    // 用户输入
+    editable.textContent = '输入1';
+    // 父组件重渲染，content 没变
+    rerender(<Harness tick={1} content="起始" />);
+    let ed = container.querySelector('[contenteditable="true"]') as HTMLElement;
+    expect(ed.textContent).toBe('输入1');
+    // 再输入
+    ed.textContent = '输入1输入2';
+    // 父组件重渲染，content 还是没变
+    rerender(<Harness tick={2} content="起始" />);
+    ed = container.querySelector('[contenteditable="true"]') as HTMLElement;
+    expect(ed.textContent).toBe('输入1输入2');
+  });
 });
 

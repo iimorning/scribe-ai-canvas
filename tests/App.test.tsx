@@ -1065,6 +1065,73 @@ describe('App 组件', () => {
       const edges = await db.edges.toArray();
       expect(edges.find(e => e.id === 'kbd-edge')).toBeUndefined();
     });
+
+    // 守护 18e2c7f 的"正文点击不进入 selectedNodes"契约：
+    // 若未来有人重新让 body click 触发选中，本测试会因为 Delete 删除了节点而失败。
+    it('正文点击不会把节点加入 selectedNodes（Delete 不会删除未被勾选的节点）', async () => {
+      const user = userEvent.setup();
+      await db.nodes.add({
+        id: 'body-click-a',
+        canvasId: 'default',
+        type: 'text',
+        content: 'body-click-guard',
+        x: 0,
+        y: 0,
+      });
+
+      await act(async () => { render(<App />); });
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      });
+
+      // 模拟"点击正文"——pointerdown 在 body 上，预期不会进入 selectedNodes。
+      // userEvent 的 click 会触发 pointerdown/pointerup/click 全套。
+      const text = await screen.findByText('body-click-guard');
+      await act(async () => { await user.click(text); });
+
+      // 现在按 Delete 键——因为没有节点被选中，所以这个节点应当保留。
+      await act(async () => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+        await new Promise(resolve => setTimeout(resolve, 100));
+      });
+
+      const nodes = await db.nodes.toArray();
+      const stillThere = nodes.find(n => n.id === 'body-click-a');
+      expect(stillThere).toBeDefined();
+      expect(stillThere?.content).toBe('body-click-guard');
+    });
+
+    // 配套守护：勾选圈 (toggle) 仍然有效。
+    it('勾选圈 toggle 仍可把节点加入 selectedNodes（避免把 body click 与 checkbox 一起误关）', async () => {
+      const user = userEvent.setup();
+      await db.nodes.add({
+        id: 'checkbox-a',
+        canvasId: 'default',
+        type: 'text',
+        content: 'checkbox-still-works',
+        x: 0,
+        y: 0,
+      });
+
+      await act(async () => { render(<App />); });
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      });
+
+      const text = await screen.findByText('checkbox-still-works');
+      const checkbox = text.closest('.group')?.querySelector<HTMLElement>('[title="选择便签"]');
+      expect(checkbox).toBeTruthy();
+      await act(async () => { await user.click(checkbox!); });
+
+      // 选中后按 Delete 应当删除节点。
+      await act(async () => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+        await new Promise(resolve => setTimeout(resolve, 100));
+      });
+
+      const nodes = await db.nodes.toArray();
+      expect(nodes.find(n => n.id === 'checkbox-a')).toBeUndefined();
+    });
   });
 
   // ============================================================
