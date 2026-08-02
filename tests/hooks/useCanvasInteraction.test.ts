@@ -2,11 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { createRef } from 'react';
 import { useCanvasInteraction } from '../../src/hooks/useCanvasInteraction';
+import { CANVAS_VIEWPORTS_KEY } from '../../src/utils/canvasViewport';
 
 describe('useCanvasInteraction', () => {
   let mainEl: HTMLDivElement;
 
   beforeEach(() => {
+    localStorage.removeItem(CANVAS_VIEWPORTS_KEY);
     mainEl = document.createElement('div');
     vi.spyOn(mainEl, 'getBoundingClientRect').mockReturnValue({
       top: 0, left: 0, right: 800, bottom: 600, width: 800, height: 600, x: 0, y: 0, toJSON: () => {},
@@ -24,11 +26,20 @@ describe('useCanvasInteraction', () => {
     const setConnectingFrom = vi.fn();
 
     return renderHook(() =>
-      useCanvasInteraction(mainRef, contentContainerRef, svgRef, edgeLabelsRef, nodesRef, null, setConnectingFrom)
+      useCanvasInteraction(
+        mainRef,
+        contentContainerRef,
+        svgRef,
+        edgeLabelsRef,
+        nodesRef,
+        null,
+        setConnectingFrom,
+        'test-canvas',
+      ),
     );
   };
 
-  it('初始 transform 为 {x:0, y:0, scale:1}', () => {
+  it('初始 transform 为已保存视窗或默认 {x:0, y:0, scale:1}', () => {
     const { result } = setupHook();
     expect(result.current.canvasTransform).toEqual({ x: 0, y: 0, scale: 1 });
   });

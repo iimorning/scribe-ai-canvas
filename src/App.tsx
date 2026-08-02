@@ -141,7 +141,14 @@ export default function App() {
 
   // Canvas interaction (transform, pan, zoom, edge lines)
   const { canvasTransform, setCanvasTransform, transformRef, handlePanStart } = useCanvasInteraction(
-    mainRef, contentContainerRef, svgRef, edgeLabelsRef, nodesRef, connectingFrom, setConnectingFrom,
+    mainRef,
+    contentContainerRef,
+    svgRef,
+    edgeLabelsRef,
+    nodesRef,
+    connectingFrom,
+    setConnectingFrom,
+    activeCanvasId,
   );
 
   const handleCanvasPanPointerDown = useCallback(

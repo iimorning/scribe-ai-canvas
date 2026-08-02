@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, type RefObject } from 'react';
+import { loadCanvasViewport, saveCanvasViewport } from '../utils/canvasViewport';
 
 export interface CanvasTransform {
   x: number;
@@ -14,15 +15,45 @@ export function useCanvasInteraction(
   nodesRef: RefObject<Record<string, HTMLElement | null>>,
   connectingFrom: string | null,
   setConnectingFrom: (v: string | null) => void,
+  canvasId: string = 'default',
 ) {
-  const [canvasTransform, setCanvasTransform] = useState<CanvasTransform>({ x: 0, y: 0, scale: 1 });
-  const transformRef = useRef<CanvasTransform>({ x: 0, y: 0, scale: 1 });
+  const [canvasTransform, setCanvasTransform] = useState<CanvasTransform>(() =>
+    loadCanvasViewport(canvasId),
+  );
+  const transformRef = useRef<CanvasTransform>(canvasTransform);
   const mousePosRef = useRef({ x: 0, y: 0 });
 
   // Sync ref with state
   useEffect(() => {
     transformRef.current = canvasTransform;
   }, [canvasTransform]);
+
+  // Restore per-canvas viewport when switching canvases; flush previous on change/unmount.
+  useEffect(() => {
+    const loaded = loadCanvasViewport(canvasId);
+    setCanvasTransform(loaded);
+    transformRef.current = loaded;
+    return () => {
+      saveCanvasViewport(canvasId, transformRef.current);
+    };
+  }, [canvasId]);
+
+  // Debounced persist while panning / zooming.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      saveCanvasViewport(canvasId, canvasTransform);
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [canvasId, canvasTransform]);
+
+  useEffect(() => {
+    const flush = () => saveCanvasViewport(canvasId, transformRef.current);
+    window.addEventListener('beforeunload', flush);
+    return () => {
+      window.removeEventListener('beforeunload', flush);
+      flush();
+    };
+  }, [canvasId]);
 
   // Track mouse position
   useEffect(() => {

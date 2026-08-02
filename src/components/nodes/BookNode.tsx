@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, ChevronLeft, ChevronRight, GitBranch, Loader2, Sparkles } from 'lucide-react';
 import { db } from '../../db';
@@ -78,6 +78,8 @@ export function BookNode({
   const { t } = useTranslation();
   const book = useMemo(() => tryParseBookContent(node.content), [node.content]);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const scrollSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ignoreScrollPersistRef = useRef(false);
   const [askUi, setAskUi] = useState<{ top: number; left: number; text: string } | null>(null);
 
   const unitCount = book?.units.length ?? 0;
@@ -87,27 +89,61 @@ export function BookNode({
   const pageLabel = unit?.title?.trim() || String(safeIndex + 1);
   const sourceLabel = node.description || book?.title || t('nodes.book');
   const selectionSource = `${sourceLabel} · ${pageLabel}`;
+  const storedScrollTop = typeof node.bookScrollTop === 'number' ? Math.max(0, node.bookScrollTop) : 0;
 
   // Keep persisted index in range if book content shrinks after a re-import.
   useEffect(() => {
     if (unitCount <= 0) return;
     if (storedIndex === safeIndex) return;
-    void db.nodes.update(node.id, { bookPageIndex: safeIndex });
+    void db.nodes.update(node.id, { bookPageIndex: safeIndex, bookScrollTop: 0 });
   }, [node.id, unitCount, storedIndex, safeIndex]);
 
-  useEffect(() => {
+  // Restore in-page scroll after refresh / page change (not on every liveQuery scroll write).
+  useLayoutEffect(() => {
     setAskUi(null);
-    if (bodyRef.current) bodyRef.current.scrollTop = 0;
+    const el = bodyRef.current;
+    if (!el) return;
+    const top = storedScrollTop;
+    ignoreScrollPersistRef.current = true;
+    el.scrollTop = top;
+    // Re-apply after images/layout settle so a mid-page position isn't clamped to 0 height.
+    const retry = window.setTimeout(() => {
+      if (bodyRef.current) bodyRef.current.scrollTop = top;
+      ignoreScrollPersistRef.current = false;
+    }, 80);
+    return () => {
+      window.clearTimeout(retry);
+      ignoreScrollPersistRef.current = false;
+    };
+    // Intentionally only when page/node changes — not when bookScrollTop updates from scrolling.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.id, safeIndex]);
 
+  useEffect(() => {
+    return () => {
+      if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current);
+    };
+  }, []);
+
   const clearAskUi = useCallback(() => setAskUi(null), []);
+
+  const persistScrollTop = useCallback(
+    (scrollTop: number) => {
+      if (ignoreScrollPersistRef.current) return;
+      if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current);
+      scrollSaveTimerRef.current = setTimeout(() => {
+        void db.nodes.update(node.id, { bookScrollTop: Math.max(0, Math.round(scrollTop)) });
+      }, 150);
+    },
+    [node.id],
+  );
 
   const goToPage = useCallback(
     (next: number) => {
       const clamped = clampPageIndex(next, unitCount);
       clearAskUi();
       if (clamped === safeIndex) return;
-      void db.nodes.update(node.id, { bookPageIndex: clamped });
+      void db.nodes.update(node.id, { bookPageIndex: clamped, bookScrollTop: 0 });
     },
     [unitCount, clearAskUi, safeIndex, node.id],
   );
@@ -211,6 +247,7 @@ export function BookNode({
           {...{ [CANVAS_NODE_CONTEXT_TEXT_ATTR]: '' }}
           onPointerDown={(e) => e.stopPropagation()}
           onMouseUp={updateSelectionAsk}
+          onScroll={(e) => persistScrollTop(e.currentTarget.scrollTop)}
         >
           {showUnitTitle && (
             <div className="text-[11px] font-sans font-semibold text-[#8c8a84] mb-2 tracking-wide">

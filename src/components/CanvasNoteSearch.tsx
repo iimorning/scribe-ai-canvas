@@ -17,81 +17,98 @@ export function CanvasNoteSearch({ nodes, onFocusNode }: CanvasNoteSearchProps) 
   const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [expanded, setExpanded] = useState(false);
   const [query, setQuery] = useState('');
-  const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
 
   const hits = useMemo(() => searchCanvasNodes(nodes, query), [nodes, query]);
-  const showResults = open && query.trim().length > 0;
+  const showResults = expanded && query.trim().length > 0;
 
   useEffect(() => {
     setActiveIndex(0);
   }, [query]);
 
   useEffect(() => {
-    if (!showResults) return;
+    if (!expanded) return;
+    const id = window.requestAnimationFrame(() => inputRef.current?.focus());
+    return () => window.cancelAnimationFrame(id);
+  }, [expanded]);
+
+  useEffect(() => {
+    if (!expanded) return;
     const onPointerDown = (e: PointerEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) {
-        setOpen(false);
+        setExpanded(false);
+        setQuery('');
       }
     };
     document.addEventListener('pointerdown', onPointerDown);
     return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [showResults]);
+  }, [expanded]);
+
+  const collapse = () => {
+    setExpanded(false);
+    setQuery('');
+  };
 
   const focusHit = (hit: CanvasNodeSearchHit) => {
     onFocusNode(hit.node);
-    setOpen(false);
-    inputRef.current?.blur();
+    collapse();
   };
 
   return (
     <div ref={rootRef} className="relative">
-      <div className="flex items-center gap-2 h-11 pl-3 pr-3 rounded-full bg-white border border-[#E6E4DF] shadow-md focus-within:border-[#C2410C]/50 focus-within:ring-2 focus-within:ring-[#C2410C]/10 transition-all w-[200px] sm:w-[240px]">
-        <Search className="w-4 h-4 text-[#8c8a84] shrink-0" aria-hidden />
-        <input
-          ref={inputRef}
-          type="search"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              if (query) {
-                setQuery('');
-              } else {
-                setOpen(false);
-                inputRef.current?.blur();
-              }
-              e.stopPropagation();
-              return;
-            }
-            if (!hits.length) return;
-            if (e.key === 'ArrowDown') {
-              e.preventDefault();
-              setOpen(true);
-              setActiveIndex((i) => Math.min(i + 1, hits.length - 1));
-              return;
-            }
-            if (e.key === 'ArrowUp') {
-              e.preventDefault();
-              setActiveIndex((i) => Math.max(i - 1, 0));
-              return;
-            }
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              const hit = hits[activeIndex] ?? hits[0];
-              if (hit) focusHit(hit);
-            }
-          }}
-          placeholder={t('canvas.search_placeholder')}
+      {!expanded ? (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="bg-white text-[#1a1a1a] p-3 rounded-full shadow-md hover:bg-[#F4F1ED] transition-all flex items-center justify-center border border-[#E6E4DF] group"
+          title={t('canvas.search_notes')}
           aria-label={t('canvas.search_notes')}
-          className="flex-1 min-w-0 bg-transparent outline-none text-sm text-[#1a1a1a] placeholder:text-[#8c8a84]"
-        />
-      </div>
+        >
+          <Search className="w-5 h-5 transition-transform group-hover:scale-110" />
+        </button>
+      ) : (
+        <div className="flex items-center gap-2 h-11 pl-3 pr-3 rounded-full bg-white border border-[#E6E4DF] shadow-md focus-within:border-[#C2410C]/50 transition-all w-[200px] sm:w-[240px]">
+          <Search className="w-4 h-4 text-[#8c8a84] shrink-0" aria-hidden />
+          <input
+            ref={inputRef}
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.stopPropagation();
+                if (query) {
+                  setQuery('');
+                } else {
+                  collapse();
+                }
+                return;
+              }
+              if (!hits.length) return;
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setActiveIndex((i) => Math.min(i + 1, hits.length - 1));
+                return;
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setActiveIndex((i) => Math.max(i - 1, 0));
+                return;
+              }
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                const hit = hits[activeIndex] ?? hits[0];
+                if (hit) focusHit(hit);
+              }
+            }}
+            placeholder={t('canvas.search_placeholder')}
+            aria-label={t('canvas.search_notes')}
+            className="flex-1 min-w-0 bg-transparent outline-none text-sm text-[#1a1a1a] placeholder:text-[#8c8a84]"
+          />
+        </div>
+      )}
 
       {showResults && (
         <div className="absolute top-full left-0 mt-2 w-[280px] sm:w-[320px] bg-white border border-[#E6E4DF] rounded-xl shadow-2xl p-1 z-50">

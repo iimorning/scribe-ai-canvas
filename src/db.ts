@@ -47,6 +47,8 @@ export interface CanvasNode {
   bookExpandIndex?: number;
   /** 书籍卡：当前阅读页/章索引（0-based），刷新后恢复 */
   bookPageIndex?: number;
+  /** 书籍卡：当前页正文滚动位置（px），与 bookPageIndex 一并恢复 */
+  bookScrollTop?: number;
 }
 
 export interface Canvas {
