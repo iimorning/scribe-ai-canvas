@@ -185,6 +185,9 @@ describe('useAiActions', () => {
       expect(nodes.length).toBe(1);
       expect(nodes[0].type).toBe('ai');
       expect(nodes[0].content).toBe('AI generated text');
+      expect(nodes[0].userTurn).toBe(
+        'Write a long reflective paragraph about episodic memory, aging, and narrative identity.',
+      );
       expect(result.current.aiPrompt).toBe('');
     });
 
@@ -279,6 +282,7 @@ describe('useAiActions', () => {
 
       const aiNodes = (await db.nodes.toArray()).filter((n) => n.type === 'ai');
       expect(aiNodes).toHaveLength(1);
+      expect(aiNodes[0]!.userTurn).toBe('这段在说什么？');
       const edges = await db.edges.toArray();
       expect(edges).toEqual(
         expect.arrayContaining([

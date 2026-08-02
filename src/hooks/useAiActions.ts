@@ -396,6 +396,7 @@ export function useAiActions({
       canvasId: activeCanvasId,
       type: 'ai',
       content: '',
+      userTurn: request,
       x,
       y,
     });
