@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Download, Monitor, Settings, X, Sparkles } from 'lucide-react';
+import { Download, Monitor, X } from 'lucide-react';
 import {
   BUILTIN_MIMO_API_EXPIRES_AT,
   hasBuiltinMimoApiKey,
@@ -68,16 +68,7 @@ export function AISettingsModal({ isOpen, onClose, config, setConfig }: AISettin
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl w-full max-w-lg overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
-        <div className="p-6 border-b border-[#E6E4DF] flex items-center justify-between bg-[#F4F1ED]/50">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#C2410C]/10 border border-[#C2410C]/20 flex items-center justify-center text-[#C2410C]">
-              <Settings className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="font-serif text-xl font-bold text-[#1a1a1a]">{t('settings.title')}</h2>
-              <p className="text-[10px] text-[#8c8a84] uppercase tracking-widest font-mono">{t('settings.ai_config')}</p>
-            </div>
-          </div>
+        <div className="px-4 pt-4 flex items-center justify-end">
           <button
             type="button"
             aria-label={t('settings.close')}
@@ -106,31 +97,6 @@ export function AISettingsModal({ isOpen, onClose, config, setConfig }: AISettin
                 中文
               </button>
             </div>
-          </div>
-
-          <div className="h-px bg-[#F4F1ED]" />
-          <div className="p-4 rounded-xl border border-[#E6E4DF] bg-[#FAF9F6] space-y-3">
-            <div className="flex gap-3">
-              <div className="w-9 h-9 rounded-lg bg-[#C2410C]/10 border border-[#C2410C]/20 flex items-center justify-center text-[#C2410C] flex-shrink-0">
-                <Monitor className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-[#1a1a1a]">
-                  {inDesktopApp ? t('settings.desktop_installed_title') : t('settings.desktop_download_title')}
-                </p>
-                <p className="text-[11px] text-[#5a5a54] leading-relaxed mt-1">
-                  {inDesktopApp ? t('settings.desktop_installed_blurb') : t('settings.desktop_download_blurb')}
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => void openExternalUrl(DESKTOP_RELEASE_URL)}
-              className="w-full flex items-center justify-center gap-2 h-10 px-4 rounded-lg border border-[#C2410C]/40 bg-[#C2410C]/5 text-[#C2410C] text-sm font-bold hover:bg-[#C2410C]/10 transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              {inDesktopApp ? t('settings.desktop_releases_button') : t('settings.desktop_download_button')}
-            </button>
           </div>
 
           <div className="h-px bg-[#F4F1ED]"></div>
@@ -391,13 +357,29 @@ export function AISettingsModal({ isOpen, onClose, config, setConfig }: AISettin
 
           <AISettingsDocsPanel provider={config.provider} />
 
-          <div className="p-4 bg-[#F4F1ED] rounded-xl border border-[#E6E4DF] border-dashed">
+          <div className="h-px bg-[#F4F1ED]" />
+          <div className="p-4 rounded-xl border border-[#E6E4DF] bg-[#FAF9F6] space-y-3">
             <div className="flex gap-3">
-              <Sparkles className="w-4 h-4 text-[#C2410C] flex-shrink-0 mt-0.5" />
-              <div className="text-[11px] leading-relaxed text-[#5a5a54]">
-                {t('settings.save_success')}
+              <div className="w-9 h-9 rounded-lg bg-[#C2410C]/10 border border-[#C2410C]/20 flex items-center justify-center text-[#C2410C] flex-shrink-0">
+                <Monitor className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-[#1a1a1a]">
+                  {inDesktopApp ? t('settings.desktop_installed_title') : t('settings.desktop_download_title')}
+                </p>
+                <p className="text-[11px] text-[#5a5a54] leading-relaxed mt-1">
+                  {inDesktopApp ? t('settings.desktop_installed_blurb') : t('settings.desktop_download_blurb')}
+                </p>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={() => void openExternalUrl(DESKTOP_RELEASE_URL)}
+              className="w-full flex items-center justify-center gap-2 h-10 px-4 rounded-lg border border-[#C2410C]/40 bg-[#C2410C]/5 text-[#C2410C] text-sm font-bold hover:bg-[#C2410C]/10 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              {inDesktopApp ? t('settings.desktop_releases_button') : t('settings.desktop_download_button')}
+            </button>
           </div>
         </div>
 

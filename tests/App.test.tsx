@@ -63,7 +63,6 @@ vi.mock('react-i18next', () => ({
         'settings.api_key': 'API 密钥',
         'settings.base_url': '基础 URL (可选)',
         'settings.model': '模型',
-        'settings.save_success': '设置已保存。',
         'settings.close': '关闭',
         'settings.save': '保存配置',
         'ai.input_placeholder': '让 AI 构思一些想法或段落...',
@@ -313,9 +312,9 @@ describe('App 组件', () => {
       const settingsBtn = screen.getByTitle('设置');
       await user.click(settingsBtn);
 
-      // 设置面板应出现
-      expect(screen.getByText('设置')).toBeInTheDocument();
-      expect(screen.getByText('AI 配置')).toBeInTheDocument();
+      // 设置面板应出现（无冗余标题，以关闭按钮与语言区为准）
+      expect(screen.getByRole('button', { name: '关闭' })).toBeInTheDocument();
+      expect(screen.getByText('English')).toBeInTheDocument();
     });
 
     it('设置面板包含语言切换选项', async () => {
@@ -524,7 +523,7 @@ describe('App 组件', () => {
     const openSettings = async (user: ReturnType<typeof userEvent.setup>) => {
       await user.click(screen.getByTitle('设置'));
       await waitFor(() => {
-        expect(screen.getByText('AI 配置')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: '关闭' })).toBeInTheDocument();
       });
     };
 

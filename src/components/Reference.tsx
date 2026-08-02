@@ -477,7 +477,7 @@ export function Reference({
                 </div>
               </div>
 
-              <div className="font-serif text-lg leading-relaxed text-[#1a1a1a]">
+              <div className="font-serif text-lg leading-relaxed tracking-[0.05em] text-[#1a1a1a]">
                 {isEditingBody ? (
                   <div
                     className="min-h-[12rem] whitespace-pre-wrap focus:outline-none hover:bg-[#EAE7E2]/50 focus:bg-[#EAE7E2]/50 rounded px-2 -mx-2 transition-colors cursor-text"
