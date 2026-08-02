@@ -126,6 +126,16 @@ export default function App() {
   const canvases = useLiveQuery(() => db.canvases.toArray()) || [];
 
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set());
+  /** Live offset applied to non-primary cards while a multi-select group is dragged. */
+  const [groupDragOffset, setGroupDragOffset] = useState<{
+    peerIds: string[];
+    dx: number;
+    dy: number;
+  } | null>(null);
+  const selectedNodesRef = useRef(selectedNodes);
+  selectedNodesRef.current = selectedNodes;
+  const dynamicNodesRef = useRef(dynamicNodes);
+  dynamicNodesRef.current = dynamicNodes;
   const [activeReferenceId, setActiveReferenceId] = useState<string>('');
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
@@ -554,7 +564,32 @@ export default function App() {
     void appAlert({ message: t('nodes.agent_no_context') });
   };
 
-  const handleNodeDragEnd = (draggedId: string, finalPos: {x: number, y: number}) => {
+  const handleNodeDragEnd = (
+    draggedId: string,
+    finalPos: { x: number; y: number },
+    delta: { dx: number; dy: number } = { dx: 0, dy: 0 },
+  ) => {
+    setGroupDragOffset(null);
+
+    const selected = selectedNodesRef.current;
+    if (selected.size > 1 && selected.has(draggedId)) {
+      const nodesSnapshot = dynamicNodesRef.current;
+      void (async () => {
+        await db.transaction('rw', db.nodes, async () => {
+          for (const id of selected) {
+            if (id === draggedId) {
+              await db.nodes.update(id, { x: finalPos.x, y: finalPos.y });
+              continue;
+            }
+            const peer = nodesSnapshot.find((n) => n.id === id);
+            if (!peer) continue;
+            await db.nodes.update(id, { x: peer.x + delta.dx, y: peer.y + delta.dy });
+          }
+        });
+      })();
+      return;
+    }
+
     // Update position in database
     db.nodes.update(draggedId, { x: finalPos.x, y: finalPos.y });
 
@@ -798,7 +833,14 @@ export default function App() {
                   <DraggableNode 
                     key={node.id} 
                     id={node.id} nodesRef={nodesRef} isConnecting={connectingFrom !== null} onLink={handleLink}
-                    initialX={node.x} initialY={node.y} 
+                    initialX={
+                      node.x +
+                      (groupDragOffset?.peerIds.includes(node.id) ? groupDragOffset.dx : 0)
+                    }
+                    initialY={
+                      node.y +
+                      (groupDragOffset?.peerIds.includes(node.id) ? groupDragOffset.dy : 0)
+                    }
                     initialWidth={node.width} initialHeight={node.height}
                     onDelete={() => removeNodeId(node.id)} scale={canvasTransform.scale}
                     rotation={rotation}
@@ -817,6 +859,11 @@ export default function App() {
                     isEditing={editingNodeId === node.id}
                     onToggleSelect={() => toggleNodeSelection(node.id)}
                     allowPalette={true}
+                    groupDragEnabled={selectedNodes.size > 1 && selectedNodes.has(node.id)}
+                    onGroupDragMove={(delta) => {
+                      const peerIds = [...selectedNodesRef.current].filter((id) => id !== node.id);
+                      setGroupDragOffset({ peerIds, dx: delta.dx, dy: delta.dy });
+                    }}
                     onDragEnd={handleNodeDragEnd}
                     onResizeEnd={(size) => {
                       db.nodes.update(node.id, size);

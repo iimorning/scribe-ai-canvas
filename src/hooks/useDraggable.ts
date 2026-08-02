@@ -2,7 +2,15 @@ import React, { useState, useRef, useEffect } from 'react';
 
 let maxZIndex = 10;
 
-export function useDraggable(initialX: number, initialY: number, scale: number = 1, onDragEnd?: (pos: {x: number, y: number}) => void) {
+export type DragDelta = { dx: number; dy: number };
+
+export function useDraggable(
+  initialX: number,
+  initialY: number,
+  scale: number = 1,
+  onDragEnd?: (pos: { x: number; y: number }, delta: DragDelta) => void,
+  onDragMove?: (pos: { x: number; y: number }, delta: DragDelta) => void,
+) {
   const [pos, setPos] = useState({ x: initialX, y: initialY });
   // Claim a fresh top z so newly spawned cards aren't trapped under an already-dragged node.
   const [zIndex, setZIndex] = useState(() => {
@@ -12,11 +20,15 @@ export function useDraggable(initialX: number, initialY: number, scale: number =
   const scaleRef = useRef(scale);
   const posRef = useRef(pos);
   const draggingRef = useRef(false);
+  const onDragEndRef = useRef(onDragEnd);
+  const onDragMoveRef = useRef(onDragMove);
   scaleRef.current = scale;
-  
+  onDragEndRef.current = onDragEnd;
+  onDragMoveRef.current = onDragMove;
+
   // Keep posRef up to date so we can send the latest pos on up
   useEffect(() => {
-     posRef.current = pos;
+    posRef.current = pos;
   }, [pos]);
 
   // Follow Dexie-driven moves (e.g. web-search source collapse/expand) without
@@ -42,30 +54,36 @@ export function useDraggable(initialX: number, initialY: number, scale: number =
     ) {
       return;
     }
-    
+
     draggingRef.current = true;
     maxZIndex += 1;
-    setZIndex(maxZIndex); 
-    
+    setZIndex(maxZIndex);
+
     const startX = e.clientX;
     const startY = e.clientY;
-    const initialPos = { ...pos };
+    const initialPos = { ...posRef.current };
 
     const onPointerMove = (moveEvent: PointerEvent) => {
-      setPos({
-        x: initialPos.x + (moveEvent.clientX - startX) / scaleRef.current,
-        y: initialPos.y + (moveEvent.clientY - startY) / scaleRef.current,
-      });
+      const dx = (moveEvent.clientX - startX) / scaleRef.current;
+      const dy = (moveEvent.clientY - startY) / scaleRef.current;
+      const next = { x: initialPos.x + dx, y: initialPos.y + dy };
+      setPos(next);
+      onDragMoveRef.current?.(next, { dx, dy });
     };
 
     const onPointerUp = () => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       draggingRef.current = false;
-      if (onDragEnd) {
+      const finalPos = posRef.current;
+      const delta = {
+        dx: finalPos.x - initialPos.x,
+        dy: finalPos.y - initialPos.y,
+      };
+      if (onDragEndRef.current) {
         // use a small timeout to let state settle
         setTimeout(() => {
-          onDragEnd(posRef.current);
+          onDragEndRef.current?.(finalPos, delta);
         }, 0);
       }
     };

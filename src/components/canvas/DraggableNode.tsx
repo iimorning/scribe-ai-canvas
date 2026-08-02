@@ -22,8 +22,12 @@ export interface DraggableNodeProps {
   isEditing?: boolean;
   onToggleSelect?: () => void;
   allowPalette?: boolean;
-  onDragEnd?: (id: string, pos: {x: number, y: number}) => void;
+  onDragEnd?: (id: string, pos: { x: number; y: number }, delta: { dx: number; dy: number }) => void;
+  /** Live visual offset for other selected cards while this node leads a group drag. */
+  onGroupDragMove?: (delta: { dx: number; dy: number }) => void;
   onResizeEnd?: (size: { width: number, height: number }) => void;
+  /** When true, dragging this card also moves the rest of the selection. */
+  groupDragEnabled?: boolean;
   initialWidth?: number;
   initialHeight?: number;
   rotation?: number;
@@ -44,6 +48,8 @@ export const DraggableNode: React.FC<DraggableNodeProps> = ({
   initialX = 100, initialY = 100, initialWidth = 320, initialHeight = 0,
   onDelete, onCycleLayout, className = '', scale = 1, 
   isSelected, isEditing, onToggleSelect, allowPalette, onDragEnd, onResizeEnd,
+  onGroupDragMove,
+  groupDragEnabled = false,
   rotation = 0,
   zIndexOverride,
   glassSurface = false,
@@ -59,9 +65,19 @@ export const DraggableNode: React.FC<DraggableNodeProps> = ({
   /** 编辑正文时隐藏外链、布局/删除、缩放手柄等外围控件（避免 group-hover 仍显示） */
   const hideChrome = Boolean(isEditing);
 
-  const node = useDraggable(initialX, initialY, scale, (pos) => {
-    if (onDragEnd) onDragEnd(id, pos);
-  });
+  const node = useDraggable(
+    initialX,
+    initialY,
+    scale,
+    (pos, delta) => {
+      if (onDragEnd) onDragEnd(id, pos, delta);
+    },
+    groupDragEnabled
+      ? (_pos, delta) => {
+          onGroupDragMove?.(delta);
+        }
+      : undefined,
+  );
 
   const { size, onPointerDown: onResizePointerDown } = useResizable(initialWidth, initialHeight, scaleRef, (newSize) => {
     if (onResizeEnd) onResizeEnd(newSize);
