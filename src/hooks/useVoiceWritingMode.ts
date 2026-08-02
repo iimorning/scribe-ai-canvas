@@ -536,6 +536,32 @@ export function useVoiceWritingMode({
     stopVoiceMode();
   }, [startVoiceMode, stopVoiceMode, voiceModeActive]);
 
+  /**
+   * Toolbar phase-chip stop:
+   * - listening → finish this turn (same as mic)
+   * - speaking → stop TTS only, then continue to the next listening note
+   * - thinking → cancel the whole voice session
+   */
+  const stopVoiceActivity = useCallback(() => {
+    if (!voiceModeActive || startingRef.current) return;
+    const phase = voicePhaseRef.current;
+    if (phase === 'speaking') {
+      setTtsHighlight(null);
+      try {
+        ttsRef.current?.stop();
+      } catch {
+        /* ignore */
+      }
+      ttsRef.current = null;
+      return;
+    }
+    if (phase === 'listening' && !handlingUtteranceRef.current) {
+      finishListeningRoundRef.current?.();
+      return;
+    }
+    stopVoiceMode();
+  }, [stopVoiceMode, voiceModeActive]);
+
   useEffect(() => {
     return () => {
       activeRef.current = false;
@@ -556,5 +582,6 @@ export function useVoiceWritingMode({
     ttsHighlight,
     toggleVoiceMode,
     stopVoiceMode,
+    stopVoiceActivity,
   };
 }

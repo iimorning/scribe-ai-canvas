@@ -24,7 +24,7 @@ vi.mock('../../src/utils/canvas', () => ({
 }));
 
 vi.mock('lucide-react', () => {
-  const names = ['Plus', 'Sparkles', 'Bot', 'Wand2', 'Send', 'ZoomIn', 'FileText', 'Loader2', 'Check', 'ChevronDown', 'ChevronUp', 'X', 'Mic', 'MicOff'] as const;
+  const names = ['Plus', 'Sparkles', 'Bot', 'Wand2', 'Send', 'ZoomIn', 'FileText', 'Loader2', 'Check', 'ChevronDown', 'ChevronUp', 'X', 'Mic', 'MicOff', 'Square'] as const;
   const icons: Record<string, React.FC> = {};
   for (const name of names) {
     icons[name] = (props: Record<string, unknown>) => {
@@ -106,5 +106,29 @@ describe('CanvasToolbar', () => {
   it('禁用时输入框为 disabled（不可编辑）', () => {
     render(<CanvasToolbar {...defaultProps()} isInputDisabled />);
     expect(screen.getByPlaceholderText('ai.input_placeholder')).toBeDisabled();
+  });
+
+  it('语音模式阶段胶囊显示停止按钮，点击调用 onStopVoiceActivity', async () => {
+    const user = userEvent.setup();
+    const onStopVoiceActivity = vi.fn();
+    render(
+      <CanvasToolbar
+        {...defaultProps()}
+        voiceModeActive
+        voicePhase="speaking"
+        onStopVoiceActivity={onStopVoiceActivity}
+      />,
+    );
+    expect(screen.getByText('voice.phase_speaking')).toBeInTheDocument();
+    const stopBtn = screen.getByTitle('voice.stop_speaking');
+    await user.click(stopBtn);
+    expect(onStopVoiceActivity).toHaveBeenCalledTimes(1);
+  });
+
+  it('听写阶段停止按钮文案为 stop_listening', () => {
+    render(
+      <CanvasToolbar {...defaultProps()} voiceModeActive voicePhase="listening" />,
+    );
+    expect(screen.getByTitle('voice.stop_listening')).toBeInTheDocument();
   });
 });

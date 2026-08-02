@@ -9,7 +9,7 @@ import {
   FileText as FileTextIcon,
   Loader2,
   Mic,
-  MicOff,
+  Square,
 } from 'lucide-react';
 import type { AgentConfig } from '../db';
 import { db } from '../db';
@@ -44,6 +44,8 @@ export interface CanvasToolbarProps {
   voiceModeActive?: boolean;
   voicePhase?: VoicePhase;
   onToggleVoiceMode?: () => void;
+  /** Phase-chip stop: finish listen / stop TTS / cancel thinking */
+  onStopVoiceActivity?: () => void;
 }
 
 export function CanvasToolbar({
@@ -67,6 +69,7 @@ export function CanvasToolbar({
   voiceModeActive = false,
   voicePhase = 'idle',
   onToggleVoiceMode,
+  onStopVoiceActivity,
 }: CanvasToolbarProps) {
   const { t } = useTranslation();
 
@@ -78,6 +81,13 @@ export function CanvasToolbar({
         : voicePhase === 'speaking'
           ? t('voice.phase_speaking')
           : t('voice.phase_idle');
+
+  const stopLabel =
+    voicePhase === 'listening'
+      ? t('voice.stop_listening')
+      : voicePhase === 'speaking'
+        ? t('voice.stop_speaking')
+        : t('voice.stop_thinking');
 
   return (
     <>
@@ -93,8 +103,17 @@ export function CanvasToolbar({
           onConfirm={onConfirmIntentClarification}
         />
         {voiceModeActive && (
-          <div className="mb-2 self-center px-3 py-1.5 rounded-full bg-[#1a1a1a]/85 text-white text-[11px] font-mono tracking-wide shadow-lg">
-            {phaseLabel}
+          <div className="mb-2 self-center flex items-center gap-2 pl-3 pr-1.5 py-1 rounded-full bg-[#1a1a1a]/85 text-white text-[11px] font-mono tracking-wide shadow-lg">
+            <span>{phaseLabel}</span>
+            <button
+              type="button"
+              title={stopLabel}
+              aria-label={stopLabel}
+              onClick={onStopVoiceActivity}
+              className="w-6 h-6 flex items-center justify-center rounded-full bg-white/15 hover:bg-[#C2410C] transition-colors"
+            >
+              <Square className="w-2.5 h-2.5 fill-current" />
+            </button>
           </div>
         )}
         <div className={`bg-white rounded-2xl shadow-2xl border border-[#E6E4DF] p-2 flex items-center space-x-2 ring-4 ring-[#F4F1ED]/50 transition-all ${isToolbarAiLoading ? 'opacity-80' : ''} ${voiceModeActive ? 'opacity-90' : ''}`}>
@@ -168,7 +187,7 @@ export function CanvasToolbar({
                   : 'text-[#5a5a54] hover:text-[#1a1a1a] hover:bg-[#F4F1ED]'
               }`}
             >
-              {voiceModeActive ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              <Mic className="w-4 h-4" />
             </button>
           </div>
           <input 

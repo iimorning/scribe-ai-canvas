@@ -377,7 +377,7 @@ export default function App() {
     dynamicNodes, edges, selectedNodes, setSelectedNodes, setActiveReferenceId, setActiveTab,
   });
 
-  const { voiceModeActive, voicePhase, ttsHighlight, toggleVoiceMode } = useVoiceWritingMode({
+  const { voiceModeActive, voicePhase, ttsHighlight, toggleVoiceMode, stopVoiceActivity } = useVoiceWritingMode({
     aiConfig,
     activeCanvasId,
     transformRef,
@@ -712,6 +712,7 @@ export default function App() {
           voiceModeActive={voiceModeActive}
           voicePhase={voicePhase}
           onToggleVoiceMode={toggleVoiceMode}
+          onStopVoiceActivity={stopVoiceActivity}
         />
         </main>
         )}
