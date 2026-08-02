@@ -148,9 +148,25 @@ export function BookNode({
     [unitCount, clearAskUi, safeIndex, node.id],
   );
 
+  const askToolbarRef = useRef<HTMLDivElement>(null);
+  /** True while pointer is down on the ask/expand bar (selection often clears on press). */
+  const askToolbarArmedRef = useRef(false);
+  /** Latest quote snapshot so actions still work if askUi is cleared mid-gesture. */
+  const askQuoteRef = useRef<{ text: string; sourceLabel: string } | null>(null);
+
+  useEffect(() => {
+    if (askUi) {
+      askQuoteRef.current = { text: askUi.text, sourceLabel: selectionSource };
+    }
+  }, [askUi, selectionSource]);
+
   const updateSelectionAsk = useCallback(() => {
     if (isExpanding) {
       setAskUi(null);
+      return;
+    }
+    // Keep the action bar mounted while interacting with it.
+    if (askToolbarArmedRef.current || askToolbarRef.current?.matches(':hover')) {
       return;
     }
     const sel = window.getSelection();
@@ -168,18 +184,52 @@ export function BookNode({
       return;
     }
     const range = sel.getRangeAt(0);
-    const rect = range.getBoundingClientRect();
-    const host = bodyRef.current.getBoundingClientRect();
+    const positionParent = bodyRef.current.parentElement ?? bodyRef.current;
+    const host = positionParent.getBoundingClientRect();
+    // Canvas pan/zoom scales screen coords; convert back to local CSS px.
+    const scale = host.height / Math.max(1, positionParent.offsetHeight);
+    const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0 && r.height > 0);
+    const first = rects[0] ?? range.getBoundingClientRect();
+    const last = rects[rects.length - 1] ?? first;
     const toolbarW = 188;
-    setAskUi({
-      text,
-      top: Math.max(8, rect.top - host.top - 40),
-      left: Math.min(
-        Math.max(8, rect.left - host.left + rect.width / 2 - toolbarW / 2),
-        Math.max(8, host.width - toolbarW - 8),
-      ),
-    });
+    const toolbarH = 40;
+    const gap = 8;
+
+    // Prefer above the first line of the selection so the popup doesn't cover the quote.
+    let top = (first.top - host.top) / scale - toolbarH - gap;
+    if (top < 4) {
+      top = (last.bottom - host.top) / scale + gap;
+    }
+    top = Math.min(Math.max(4, top), Math.max(4, positionParent.clientHeight - toolbarH - 4));
+
+    const midX = (first.left + first.width / 2 - host.left) / scale;
+    const left = Math.min(
+      Math.max(8, midX - toolbarW / 2),
+      Math.max(8, positionParent.clientWidth - toolbarW - 8),
+    );
+
+    setAskUi({ text, top, left });
   }, [isExpanding]);
+
+  const runAskAboutSelection = useCallback(() => {
+    const quote = askQuoteRef.current;
+    if (!quote || !onAskAboutSelection) return;
+    onAskAboutSelection(quote.text, quote.sourceLabel);
+    askToolbarArmedRef.current = false;
+    askQuoteRef.current = null;
+    clearAskUi();
+    window.getSelection()?.removeAllRanges();
+  }, [onAskAboutSelection, clearAskUi]);
+
+  const runExpandSelection = useCallback(() => {
+    const quote = askQuoteRef.current;
+    if (!quote || !onExpandSelection) return;
+    onExpandSelection(quote.text, quote.sourceLabel);
+    askToolbarArmedRef.current = false;
+    askQuoteRef.current = null;
+    clearAskUi();
+    window.getSelection()?.removeAllRanges();
+  }, [onExpandSelection, clearAskUi]);
 
   useEffect(() => {
     const onSelChange = () => {
@@ -259,23 +309,37 @@ export function BookNode({
 
         {showSelectionActions && askUi && (
           <div
-            className="absolute z-10 flex items-center gap-1 p-0.5 rounded-lg bg-white border border-[#E6E4DF] shadow-md"
+            ref={askToolbarRef}
+            className="absolute z-20 flex items-center gap-1 p-0.5 rounded-lg bg-white border border-[#E6E4DF] shadow-md"
             style={{ top: askUi.top, left: askUi.left }}
             data-no-drag=""
             onPointerDown={(e) => {
+              // Keep selection; note: preventDefault suppresses mouse* events, so actions use pointerup.
               e.stopPropagation();
               e.preventDefault();
+              askToolbarArmedRef.current = true;
+            }}
+            onPointerUp={(e) => {
+              e.stopPropagation();
+              askToolbarArmedRef.current = false;
+            }}
+            onPointerCancel={() => {
+              askToolbarArmedRef.current = false;
             }}
           >
             {onAskAboutSelection && (
               <button
                 type="button"
                 className="flex items-center gap-1 px-2 py-1 rounded-md bg-[#C2410C] text-white text-[11px] font-sans font-bold hover:bg-[#a0350a] transition-colors"
-                onClick={(e) => {
+                onPointerDown={(e) => {
                   e.stopPropagation();
-                  onAskAboutSelection(askUi.text, selectionSource);
-                  clearAskUi();
-                  window.getSelection()?.removeAllRanges();
+                  e.preventDefault();
+                  askToolbarArmedRef.current = true;
+                }}
+                onPointerUp={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  runAskAboutSelection();
                 }}
               >
                 <Sparkles className="w-3 h-3" />
@@ -286,11 +350,15 @@ export function BookNode({
               <button
                 type="button"
                 className="flex items-center gap-1 px-2 py-1 rounded-md text-[#C2410C] text-[11px] font-sans font-bold hover:bg-[#FFF7ED] transition-colors"
-                onClick={(e) => {
+                onPointerDown={(e) => {
                   e.stopPropagation();
-                  onExpandSelection(askUi.text, selectionSource);
-                  clearAskUi();
-                  window.getSelection()?.removeAllRanges();
+                  e.preventDefault();
+                  askToolbarArmedRef.current = true;
+                }}
+                onPointerUp={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  runExpandSelection();
                 }}
               >
                 <GitBranch className="w-3 h-3" />

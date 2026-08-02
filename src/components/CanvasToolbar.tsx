@@ -186,13 +186,13 @@ export function CanvasToolbar({
     }
   }, [layout.orientation]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-expand when voice / intent needs the full bar.
+  // Auto-expand when voice / intent / book quote needs the full bar.
   useEffect(() => {
     if (!collapsed) return;
-    if (voiceModeActive || intentClarification) {
+    if (voiceModeActive || intentClarification || pendingQuote?.text) {
       expandToolbar();
     }
-  }, [collapsed, voiceModeActive, intentClarification, expandToolbar]);
+  }, [collapsed, voiceModeActive, intentClarification, pendingQuote?.text, expandToolbar]);
 
   const toggleOrientation = useCallback(() => {
     if (collapsed) return;
@@ -375,49 +375,50 @@ export function CanvasToolbar({
             )}
           </button>
         ) : (
-          <>
-        {voiceModeActive && (
-          <div className="mb-2 self-center flex items-center gap-2 pl-3 pr-1.5 py-1 rounded-full bg-[#1a1a1a]/85 text-white text-[11px] font-mono tracking-wide shadow-lg">
-            <span>{phaseLabel}</span>
-            <button
-              type="button"
-              title={stopLabel}
-              aria-label={stopLabel}
-              onClick={onStopVoiceActivity}
-              className="w-6 h-6 flex items-center justify-center rounded-full bg-white/15 hover:bg-[#C2410C] transition-colors"
-            >
-              <Square className="w-2.5 h-2.5 fill-current" />
-            </button>
-          </div>
-        )}
-        {pendingQuote?.text && (
-          <div
-            className={`mb-2 flex items-start gap-2 px-3 py-2 rounded-xl bg-[#FFF7ED] border border-[#FDBA74] text-[12px] text-[#9a3412] shadow-sm ${
-              isVertical ? 'w-56 self-stretch' : 'self-stretch'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-            <div className="min-w-0 flex-1">
-              <div className="font-sans font-bold text-[10px] uppercase tracking-wider text-[#C2410C] mb-0.5">
-                {pendingQuote.sourceLabel
-                  ? t('ai.quote_chip_with_source', { source: pendingQuote.sourceLabel })
-                  : t('ai.quote_chip')}
+          <div className={`relative ${isVertical ? 'w-56' : 'w-full'}`}>
+            {/* Float above the input so appearing chips don't push the bar off-screen. */}
+            {(voiceModeActive || pendingQuote?.text) && (
+              <div className="absolute bottom-full left-0 right-0 mb-2 flex flex-col gap-2 pointer-events-auto">
+                {voiceModeActive && (
+                  <div className="self-center flex items-center gap-2 pl-3 pr-1.5 py-1 rounded-full bg-[#1a1a1a]/85 text-white text-[11px] font-mono tracking-wide shadow-lg">
+                    <span>{phaseLabel}</span>
+                    <button
+                      type="button"
+                      title={stopLabel}
+                      aria-label={stopLabel}
+                      onClick={onStopVoiceActivity}
+                      className="w-6 h-6 flex items-center justify-center rounded-full bg-white/15 hover:bg-[#C2410C] transition-colors"
+                    >
+                      <Square className="w-2.5 h-2.5 fill-current" />
+                    </button>
+                  </div>
+                )}
+                {pendingQuote?.text && (
+                  <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-[#FFF7ED] border border-[#FDBA74] text-[12px] text-[#9a3412] shadow-sm">
+                    <Sparkles className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-sans font-bold text-[10px] uppercase tracking-wider text-[#C2410C] mb-0.5">
+                        {pendingQuote.sourceLabel
+                          ? t('ai.quote_chip_with_source', { source: pendingQuote.sourceLabel })
+                          : t('ai.quote_chip')}
+                      </div>
+                      <p className="font-serif leading-snug line-clamp-2 break-words">{pendingQuote.text}</p>
+                    </div>
+                    {onClearPendingQuote && (
+                      <button
+                        type="button"
+                        title={t('ai.quote_clear')}
+                        aria-label={t('ai.quote_clear')}
+                        onClick={onClearPendingQuote}
+                        className="shrink-0 text-[#C2410C]/70 hover:text-[#C2410C] font-bold px-1"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
-              <p className="font-serif leading-snug line-clamp-2 break-words">{pendingQuote.text}</p>
-            </div>
-            {onClearPendingQuote && (
-              <button
-                type="button"
-                title={t('ai.quote_clear')}
-                aria-label={t('ai.quote_clear')}
-                onClick={onClearPendingQuote}
-                className="shrink-0 text-[#C2410C]/70 hover:text-[#C2410C] font-bold px-1"
-              >
-                ×
-              </button>
             )}
-          </div>
-        )}
 
         <div
           ref={shellRef}
@@ -431,7 +432,7 @@ export function CanvasToolbar({
             dragging ? 'cursor-grabbing touch-none' : 'cursor-grab'
           } ${isToolbarAiLoading ? 'opacity-80' : ''} ${voiceModeActive ? 'opacity-90' : ''} ${
             isVertical
-              ? 'flex flex-col items-stretch gap-2 w-56'
+              ? 'flex flex-col items-stretch gap-2 w-full'
               : 'flex items-center space-x-2 w-full'
           }`}
         >
@@ -583,7 +584,7 @@ export function CanvasToolbar({
             {isToolbarAiLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Wand2 className="w-5 h-5" />}
           </button>
         </div>
-          </>
+          </div>
         )}
       </div>
 
