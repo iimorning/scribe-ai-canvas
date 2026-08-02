@@ -5,7 +5,11 @@ import type { AIConfig } from '../components/AISettingsModal';
 import type { CanvasTransform } from './useCanvasInteraction';
 import { callUniversalAI, formatAiError, maskApiKeyForLog } from '../services/ai';
 import { metasoSearch } from '../services/search';
-import { deriveSearchQueryFromNoteText, spawnWebSearchCardsFromPages } from '../services/spawnWebSearchNoteCards';
+import {
+  deriveSearchQueryFromNoteText,
+  spawnWebSearchCardsFromImages,
+  spawnWebSearchCardsFromPages,
+} from '../services/spawnWebSearchNoteCards';
 import { parseThreadWebSearchIntent } from '../utils/webSearchCommand';
 import { shouldPreflightToolbarIntent } from '../utils/toolbarIntentGate';
 import { analyzeToolbarIntentPreflight } from '../services/toolbarIntentClarification';
@@ -458,10 +462,18 @@ export function useAiActions({
       followUpGuardRef.current = true;
       setFollowUpParentId(parentNodeId);
       try {
-        const res = await metasoSearch(query, { apiKey: key });
+        const isImage = searchIntent.kind === 'image';
+        const res = await metasoSearch(query, {
+          apiKey: key,
+          scope: isImage ? 'image' : 'webpage',
+        });
         const pages = res.webpages ?? [];
-        if (pages.length === 0) {
-          void appAlert({ message: t('nodes.search_no_results') });
+        const images = res.images ?? [];
+        const hitCount = isImage ? images.length : pages.length;
+        if (hitCount === 0) {
+          void appAlert({
+            message: isImage ? t('nodes.search_no_images') : t('nodes.search_no_results'),
+          });
           return;
         }
 
@@ -476,7 +488,7 @@ export function useAiActions({
           canvasId: activeCanvasId,
           type: 'ai',
           userTurn: trimmed,
-          content: t('nodes.search_follow_up_ack'),
+          content: isImage ? t('nodes.search_image_follow_up_ack') : t('nodes.search_follow_up_ack'),
           x: parent.x,
           y: childY,
           width: w,
@@ -496,11 +508,17 @@ export function useAiActions({
           from: parentNodeId,
           to: newNodeId,
         });
-        await spawnWebSearchCardsFromPages(newNodeId, { x: parent.x, y: childY }, pages, activeCanvasId, {
-          // Center the source lane on the new answer card; fall back to measured parent height
-          // when the fresh node has not laid out yet.
-          anchorHeight: h,
-        });
+        if (isImage) {
+          await spawnWebSearchCardsFromImages(newNodeId, { x: parent.x, y: childY }, images, activeCanvasId, {
+            anchorHeight: h,
+          });
+        } else {
+          await spawnWebSearchCardsFromPages(newNodeId, { x: parent.x, y: childY }, pages, activeCanvasId, {
+            // Center the source lane on the new answer card; fall back to measured parent height
+            // when the fresh node has not laid out yet.
+            anchorHeight: h,
+          });
+        }
         await db.nodes.update(parentNodeId, { followUpSent: true });
       } catch (e) {
         const msg = formatAiError(e);

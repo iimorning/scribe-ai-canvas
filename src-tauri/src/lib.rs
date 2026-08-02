@@ -137,16 +137,28 @@ async fn openai_compatible_chat_stream(
 
 /// Metaso (秘塔) search API proxy.
 /// POST https://metaso.cn/api/v1/search — bypasses browser CORS in Tauri webview.
+/// `scope`: webpage | image (default webpage). `size`: 1–20 (default 5).
 #[tauri::command]
-async fn metaso_search(api_key: String, query: String) -> Result<String, String> {
+async fn metaso_search(
+    api_key: String,
+    query: String,
+    scope: Option<String>,
+    size: Option<u32>,
+) -> Result<String, String> {
     let client = reqwest::Client::builder()
         .build()
         .map_err(|e| e.to_string())?;
 
+    let scope = match scope.as_deref().map(str::trim).unwrap_or("webpage") {
+        "image" => "image",
+        _ => "webpage",
+    };
+    let size = size.unwrap_or(5).clamp(1, 20);
+
     let body = serde_json::json!({
         "q": query,
-        "scope": "webpage",
-        "size": 5,
+        "scope": scope,
+        "size": size,
     });
 
     let response = client

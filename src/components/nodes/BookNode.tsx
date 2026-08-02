@@ -1,9 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, ChevronLeft, ChevronRight, GitBranch, Loader2, Sparkles } from 'lucide-react';
+import { db } from '../../db';
 import type { BookNodeProps } from './types';
 import { CANVAS_NODE_CONTEXT_TEXT_ATTR } from '../../utils/canvasNodeContextText';
 import { tryParseBookContent } from '../../utils/bookPayload';
+
+function clampPageIndex(index: number, unitCount: number): number {
+  if (unitCount <= 0) return 0;
+  return Math.min(Math.max(0, index), unitCount - 1);
+}
 
 export function BookNode({
   node,
@@ -13,23 +19,39 @@ export function BookNode({
 }: BookNodeProps) {
   const { t } = useTranslation();
   const book = useMemo(() => tryParseBookContent(node.content), [node.content]);
-  const [pageIndex, setPageIndex] = useState(0);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [askUi, setAskUi] = useState<{ top: number; left: number; text: string } | null>(null);
 
   const unitCount = book?.units.length ?? 0;
-  const safeIndex = unitCount === 0 ? 0 : Math.min(pageIndex, unitCount - 1);
+  const storedIndex = typeof node.bookPageIndex === 'number' ? node.bookPageIndex : 0;
+  const safeIndex = clampPageIndex(storedIndex, unitCount);
   const unit = book?.units[safeIndex];
   const pageLabel = unit?.title?.trim() || String(safeIndex + 1);
   const sourceLabel = node.description || book?.title || t('nodes.book');
   const selectionSource = `${sourceLabel} · ${pageLabel}`;
 
+  // Keep persisted index in range if book content shrinks after a re-import.
   useEffect(() => {
-    setPageIndex(0);
+    if (unitCount <= 0) return;
+    if (storedIndex === safeIndex) return;
+    void db.nodes.update(node.id, { bookPageIndex: safeIndex });
+  }, [node.id, unitCount, storedIndex, safeIndex]);
+
+  useEffect(() => {
     setAskUi(null);
-  }, [node.id, node.content]);
+  }, [node.id, safeIndex]);
 
   const clearAskUi = useCallback(() => setAskUi(null), []);
+
+  const goToPage = useCallback(
+    (next: number) => {
+      const clamped = clampPageIndex(next, unitCount);
+      clearAskUi();
+      if (clamped === safeIndex) return;
+      void db.nodes.update(node.id, { bookPageIndex: clamped });
+    },
+    [unitCount, clearAskUi, safeIndex, node.id],
+  );
 
   const updateSelectionAsk = useCallback(() => {
     if (isExpanding) {
@@ -57,7 +79,10 @@ export function BookNode({
     setAskUi({
       text,
       top: Math.max(8, rect.top - host.top - 40),
-      left: Math.min(Math.max(8, rect.left - host.left + rect.width / 2 - toolbarW / 2), Math.max(8, host.width - toolbarW - 8)),
+      left: Math.min(
+        Math.max(8, rect.left - host.left + rect.width / 2 - toolbarW / 2),
+        Math.max(8, host.width - toolbarW - 8),
+      ),
     });
   }, [isExpanding]);
 
@@ -185,10 +210,7 @@ export function BookNode({
           disabled={safeIndex <= 0 || isExpanding}
           className="p-1.5 rounded-md text-[#5a5a54] hover:bg-[#F4F1ED] disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
           aria-label={t('nodes.book_prev')}
-          onClick={() => {
-            setPageIndex((i) => Math.max(0, i - 1));
-            clearAskUi();
-          }}
+          onClick={() => goToPage(safeIndex - 1)}
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
@@ -201,10 +223,7 @@ export function BookNode({
           disabled={safeIndex >= unitCount - 1 || isExpanding}
           className="p-1.5 rounded-md text-[#5a5a54] hover:bg-[#F4F1ED] disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
           aria-label={t('nodes.book_next')}
-          onClick={() => {
-            setPageIndex((i) => Math.min(unitCount - 1, i + 1));
-            clearAskUi();
-          }}
+          onClick={() => goToPage(safeIndex + 1)}
         >
           <ChevronRight className="w-4 h-4" />
         </button>

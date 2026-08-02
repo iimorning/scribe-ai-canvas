@@ -7,6 +7,7 @@ import {
   setWebSearchSourcesCollapsed,
   sourceCardStackPos,
   sourceCardY,
+  spawnWebSearchCardsFromImages,
   SOURCE_LANE_OFFSET_X,
   SOURCE_ROW_GAP_Y,
   SOURCE_STACK_STEP,
@@ -210,5 +211,39 @@ describe('setWebSearchSourcesCollapsed', () => {
     expect(src0Expanded?.x).toBe(50 + SOURCE_LANE_OFFSET_X);
     expect(src1Expanded?.x).toBe(50 + SOURCE_LANE_OFFSET_X);
     expect(src1Expanded?.y - (src0Expanded?.y ?? 0)).toBe(SOURCE_ROW_GAP_Y);
+  });
+});
+
+describe('spawnWebSearchCardsFromImages', () => {
+  beforeEach(async () => {
+    await db.nodes.clear();
+    await db.edges.clear();
+  });
+
+  it('creates image nodes linked to the answer card', async () => {
+    await db.nodes.add({ id: 'ai-img', type: 'ai', content: 'ack', x: 10, y: 20 });
+    await spawnWebSearchCardsFromImages(
+      'ai-img',
+      { x: 10, y: 20 },
+      [
+        { title: 'A', link: 'https://example.com/a', thumbnail: 'https://cdn.example/a.jpg' },
+        { title: 'B', link: 'https://cdn.example/b.jpg' },
+      ],
+      'canvas-1',
+      { staggerMs: 0, anchorHeight: 280 },
+    );
+
+    const nodes = await db.nodes.toArray();
+    const images = nodes
+      .filter((n) => n.type === 'image')
+      .sort((a, b) => (a.webSearchIndex ?? 0) - (b.webSearchIndex ?? 0));
+    expect(images).toHaveLength(2);
+    expect(images[0]?.content).toBe('https://cdn.example/a.jpg');
+    expect(images[0]?.webSearchParentId).toBe('ai-img');
+    expect(images[1]?.content).toBe('https://cdn.example/b.jpg');
+
+    const listed = listWebSearchSourcesForParent('ai-img', nodes, await db.edges.toArray());
+    expect(listed).toHaveLength(2);
+    expect(listed.every((n) => n.type === 'image')).toBe(true);
   });
 });

@@ -26,6 +26,15 @@ describe('parseThreadWebSearchIntent', () => {
 
   it('detects web search (case insensitive)', () => {
     expect(parseThreadWebSearchIntent('Web Search climate')?.explicitQuery).toBe('climate');
+    expect(parseThreadWebSearchIntent('Web Search climate')?.kind).toBe('webpage');
+  });
+
+  it('detects 搜图 / image search', () => {
+    expect(parseThreadWebSearchIntent('搜图 富士山')?.kind).toBe('image');
+    expect(parseThreadWebSearchIntent('搜图 富士山')?.explicitQuery).toBe('富士山');
+    expect(parseThreadWebSearchIntent('图片搜索 猫')?.kind).toBe('image');
+    expect(parseThreadWebSearchIntent('image search sunset')?.kind).toBe('image');
+    expect(parseThreadWebSearchIntent('image search sunset')?.explicitQuery).toBe('sunset');
   });
 
   it('does not treat mid-sentence mention as a typed command', () => {
@@ -67,6 +76,12 @@ describe('parseVoiceWebSearchIntent', () => {
   it('detects 帮我搜索 / 查一下', () => {
     expect(parseVoiceWebSearchIntent('帮我搜索 OpenAI')?.explicitQuery).toMatch(/OpenAI/);
     expect(parseVoiceWebSearchIntent('查一下佛山天气')?.explicitQuery).toMatch(/佛山/);
+  });
+
+  it('detects mid-sentence 搜图', () => {
+    const intent = parseVoiceWebSearchIntent('帮我搜图一下富士山和樱花');
+    expect(intent?.kind).toBe('image');
+    expect(intent?.explicitQuery).toMatch(/富士山|樱花/);
   });
 
   it('returns null when there is no search trigger', () => {

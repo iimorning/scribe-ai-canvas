@@ -37,6 +37,8 @@ export interface CanvasNode {
   bookExpandParentId?: string;
   /** 文本卡：在书籍展开分支中的顺序（0-based） */
   bookExpandIndex?: number;
+  /** 书籍卡：当前阅读页/章索引（0-based），刷新后恢复 */
+  bookPageIndex?: number;
 }
 
 export interface Canvas {

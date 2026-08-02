@@ -1,5 +1,6 @@
 import { db, type CanvasNode, type Edge } from '../db';
-import type { MetasoWebpage } from './search';
+import type { MetasoImage, MetasoWebpage } from './search';
+import { resolveMetasoImageUrl } from './search';
 
 const DEFAULT_STAGGER_MS = 320;
 /** Sources live in a dedicated vertical lane beside the answer, never in a fan of overlaps. */
@@ -61,6 +62,7 @@ export function sourceStackZIndex(index: number): number {
 
 export function isWebSearchSourceNode(node: CanvasNode): boolean {
   if (node.webSearchParentId) return true;
+  if (node.type === 'image' && typeof node.webSearchIndex === 'number') return true;
   if (node.type !== 'text' && node.type !== 'note') return false;
   if (node.layout !== 2) return false;
   return /^###\s*\d+\./m.test((node.content ?? '').trim());
@@ -79,11 +81,13 @@ export function listWebSearchSourcesForParent(
 ): CanvasNode[] {
   const childIds = new Set(edges.filter((e) => e.from === parentId).map((e) => e.to));
   return nodes
-    .filter(
-      (n) =>
-        childIds.has(n.id) &&
-        (n.webSearchParentId === parentId || (!n.webSearchParentId && isWebSearchSourceNode(n))),
-    )
+    .filter((n) => {
+      if (!childIds.has(n.id)) return false;
+      if (n.webSearchParentId === parentId) return true;
+      if (n.webSearchParentId) return false;
+      if (n.type === 'image') return typeof n.webSearchIndex === 'number';
+      return isWebSearchSourceNode(n);
+    })
     .sort((a, b) => webSearchSourceIndex(a) - webSearchSourceIndex(b));
 }
 
@@ -166,6 +170,54 @@ export async function spawnWebSearchCardsFromPages(
       width: SOURCE_CARD_WIDTH,
       height: SOURCE_CARD_HEIGHT,
       layout: 2,
+      webSearchParentId: sourceNodeId,
+      webSearchIndex: i,
+    });
+    await db.edges.add({
+      id: crypto.randomUUID(),
+      canvasId: activeCanvasId,
+      from: sourceNodeId,
+      to: id,
+    });
+  }
+}
+
+/**
+ * Create image nodes from Metaso image search hits in the same vertical lane as webpage sources.
+ */
+export async function spawnWebSearchCardsFromImages(
+  sourceNodeId: string,
+  base: { x: number; y: number },
+  images: MetasoImage[],
+  activeCanvasId: string,
+  options?: { staggerMs?: number; anchorHeight?: number },
+): Promise<void> {
+  const staggerMs = options?.staggerMs ?? DEFAULT_STAGGER_MS;
+  const anchorHeight = options?.anchorHeight ?? DEFAULT_ANCHOR_HEIGHT;
+  const list = images
+    .map((img) => ({
+      img,
+      url: resolveMetasoImageUrl(img),
+      title: (img.title || '').replace(/\s+/g, ' ').trim(),
+    }))
+    .filter((row) => row.url.length > 0);
+
+  for (let i = 0; i < list.length; i++) {
+    if (i > 0) {
+      await new Promise((r) => setTimeout(r, staggerMs));
+    }
+    const row = list[i]!;
+    const id = crypto.randomUUID();
+    await db.nodes.add({
+      id,
+      canvasId: activeCanvasId,
+      type: 'image',
+      content: row.url,
+      description: row.title || undefined,
+      x: base.x + SOURCE_LANE_OFFSET_X,
+      y: sourceCardY(base.y, i, list.length, anchorHeight),
+      width: SOURCE_CARD_WIDTH,
+      height: SOURCE_CARD_HEIGHT,
       webSearchParentId: sourceNodeId,
       webSearchIndex: i,
     });

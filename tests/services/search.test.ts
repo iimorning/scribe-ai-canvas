@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { metasoSearch, buildSearchContext } from '../../src/services/search';
+import { metasoSearch, buildSearchContext, resolveMetasoImageUrl } from '../../src/services/search';
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -36,6 +36,28 @@ describe('metasoSearch', () => {
     it('handles missing webpages array gracefully', () => {
       const result = buildSearchContext({ credits: 0, total: 0 } as any);
       expect(result).toBe('');
+    });
+
+    it('formats image results into context block', () => {
+      const result = buildSearchContext({
+        credits: 1,
+        total: 1,
+        webpages: [],
+        images: [{ title: 'Mt Fuji', link: 'https://page.example/fuji', thumbnail: 'https://cdn.example/fuji.jpg' }],
+      });
+      expect(result).toContain('[Image 1: Mt Fuji](https://cdn.example/fuji.jpg)');
+      expect(result).toContain('Page: https://page.example/fuji');
+    });
+  });
+
+  describe('resolveMetasoImageUrl', () => {
+    it('prefers thumbnail over link', () => {
+      expect(
+        resolveMetasoImageUrl({
+          link: 'https://page.example',
+          thumbnail: 'https://cdn.example/a.jpg',
+        }),
+      ).toBe('https://cdn.example/a.jpg');
     });
   });
 
@@ -87,6 +109,27 @@ describe('metasoSearch', () => {
       );
       expect(result.webpages).toHaveLength(1);
       expect(result.webpages[0].title).toBe('Test');
+    });
+
+    it('calls proxy with image scope when requested', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          credits: 1,
+          total: 1,
+          images: [{ title: 'Cat', link: 'https://img.example/cat.jpg', thumbnail: 'https://img.example/cat-t.jpg' }],
+        }),
+      });
+
+      const result = await metasoSearch('cat', { apiKey: 'sk-metaso-test', scope: 'image', size: 8 });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/metaso/api/v1/search',
+        expect.objectContaining({
+          body: JSON.stringify({ q: 'cat', scope: 'image', size: 8 }),
+        }),
+      );
+      expect(result.images).toHaveLength(1);
     });
 
     it('throws on HTTP error', async () => {

@@ -11,7 +11,10 @@ import { db } from '../db';
 import { callUniversalAI, formatAiError } from '../services/ai';
 import { startMicCapture, type MicCapture } from '../services/micCapture';
 import { buildSearchContext, metasoSearch } from '../services/search';
-import { spawnWebSearchCardsFromPages } from '../services/spawnWebSearchNoteCards';
+import {
+  spawnWebSearchCardsFromImages,
+  spawnWebSearchCardsFromPages,
+} from '../services/spawnWebSearchNoteCards';
 import { hasVolcAsrCredentials, openVolcAsrSession, type VolcAsrSession } from '../services/volcAsr';
 import { getCanvasCenterPosition } from '../utils/canvas';
 import { runCanvasStreamingAiCall } from '../utils/canvasStreamingAi';
@@ -343,18 +346,34 @@ export function useVoiceWritingMode({
             aiPrompt = '用户请求了联网搜索，但没有提供检索关键词。请简洁请用户补充关键词。';
           } else {
             try {
-              const searchResult = await metasoSearch(query, { apiKey: searchKey });
+              const isImage = searchIntent.kind === 'image';
+              const searchResult = await metasoSearch(query, {
+                apiKey: searchKey,
+                scope: isImage ? 'image' : 'webpage',
+              });
               const pages = searchResult.webpages ?? [];
-              if (pages.length === 0) {
-                void appAlert({ message: t('nodes.search_no_results') });
-                aiPrompt = `用户联网搜索“${query}”但没有获得结果。请简洁告知用户，并建议更具体的检索词。`;
+              const images = searchResult.images ?? [];
+              const hitCount = isImage ? images.length : pages.length;
+              if (hitCount === 0) {
+                void appAlert({
+                  message: isImage ? t('nodes.search_no_images') : t('nodes.search_no_results'),
+                });
+                aiPrompt = isImage
+                  ? `用户搜图“${query}”但没有获得结果。请简洁告知用户，并建议更具体的检索词。`
+                  : `用户联网搜索“${query}”但没有获得结果。请简洁告知用户，并建议更具体的检索词。`;
               } else {
                 const searchContext = buildSearchContext(searchResult);
                 // Show sources as linked cards without holding up the answer / TTS pipeline.
-                void spawnWebSearchCardsFromPages(aiNodeId, aiPos, pages, activeCanvasId);
+                if (isImage) {
+                  void spawnWebSearchCardsFromImages(aiNodeId, aiPos, images, activeCanvasId);
+                } else {
+                  void spawnWebSearchCardsFromPages(aiNodeId, aiPos, pages, activeCanvasId);
+                }
                 aiPrompt = [
                   `用户的问题：${query}`,
-                  '系统已经完成网页检索，结果如下（请直接据此回答，不要再发起搜索或工具调用）：',
+                  isImage
+                    ? '系统已经完成图片检索，结果如下（请直接据此回答，不要再发起搜索或工具调用）：'
+                    : '系统已经完成网页检索，结果如下（请直接据此回答，不要再发起搜索或工具调用）：',
                   searchContext,
                   '要求：只用自然语言回答；禁止输出 tool_call、函数调用 JSON、XML 标签，或任何 ]<]minimax[> 之类的特殊标记；不要提及内部工具或检索流程；不确定处请说清楚。',
                 ].join('\n\n');

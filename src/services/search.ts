@@ -4,8 +4,14 @@ const LOG_PREFIX = '[Scribe AI][Search]';
 // Types
 // ---------------------------------------------------------------------------
 
+export type MetasoSearchScope = 'webpage' | 'image';
+
 export interface MetasoSearchConfig {
   apiKey: string;
+  /** Default: webpage */
+  scope?: MetasoSearchScope;
+  /** Default: 5 */
+  size?: number;
 }
 
 export interface MetasoWebpage {
@@ -16,10 +22,19 @@ export interface MetasoWebpage {
   date: string;
 }
 
+export interface MetasoImage {
+  title?: string;
+  /** Source page or image URL */
+  link: string;
+  /** Prefer this for display when present */
+  thumbnail?: string;
+}
+
 export interface MetasoSearchResponse {
   credits: number;
   total: number;
   webpages: MetasoWebpage[];
+  images?: MetasoImage[];
 }
 
 // ---------------------------------------------------------------------------
@@ -31,6 +46,15 @@ function isTauriRuntime(): boolean {
     typeof window !== 'undefined' &&
     Object.prototype.hasOwnProperty.call(window, '__TAURI_INTERNALS__')
   );
+}
+
+/** Prefer thumbnail, then a direct image link. */
+export function resolveMetasoImageUrl(img: MetasoImage): string {
+  const thumb = (img.thumbnail || '').trim();
+  if (/^https?:\/\//i.test(thumb)) return thumb;
+  const link = (img.link || '').trim();
+  if (/^https?:\/\//i.test(link)) return link;
+  return '';
 }
 
 // ---------------------------------------------------------------------------
@@ -55,7 +79,10 @@ export async function metasoSearch(
     throw new Error('Metaso API key is empty');
   }
 
-  console.info(`${LOG_PREFIX} metasoSearch`, { query });
+  const scope: MetasoSearchScope = config.scope === 'image' ? 'image' : 'webpage';
+  const size = Math.min(Math.max(config.size ?? 5, 1), 20);
+
+  console.info(`${LOG_PREFIX} metasoSearch`, { query, scope, size });
 
   // ---- Tauri path --------------------------------------------------------
   if (isTauriRuntime()) {
@@ -64,6 +91,8 @@ export async function metasoSearch(
       const json = await invoke<string>('metaso_search', {
         apiKey,
         query,
+        scope,
+        size,
       });
       return JSON.parse(json) as MetasoSearchResponse;
     } catch (e) {
@@ -87,8 +116,8 @@ export async function metasoSearch(
       },
       body: JSON.stringify({
         q: query,
-        scope: 'webpage',
-        size: 5,
+        scope,
+        size,
       }),
       signal: controller.signal,
     });
@@ -115,10 +144,21 @@ export async function metasoSearch(
  */
 export function buildSearchContext(results: MetasoSearchResponse): string {
   const webpages = results.webpages ?? [];
-  if (webpages.length === 0) return '';
+  const images = results.images ?? [];
+  if (webpages.length === 0 && images.length === 0) return '';
 
-  const fragments = webpages.map((wp, idx) => {
-    return `[Source ${idx + 1}: ${wp.title}](${wp.link})\n${wp.snippet}`;
+  const fragments: string[] = [];
+
+  webpages.forEach((wp, idx) => {
+    fragments.push(`[Source ${idx + 1}: ${wp.title}](${wp.link})\n${wp.snippet}`);
+  });
+
+  images.forEach((img, idx) => {
+    const url = resolveMetasoImageUrl(img);
+    const title = (img.title || 'Image').trim();
+    fragments.push(
+      `[Image ${idx + 1}: ${title}]${url ? `(${url})` : ''}${img.link && img.link !== url ? `\nPage: ${img.link}` : ''}`,
+    );
   });
 
   return [

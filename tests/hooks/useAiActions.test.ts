@@ -543,7 +543,7 @@ describe('useAiActions', () => {
       });
 
       expect(callUniversalAI).not.toHaveBeenCalled();
-      expect(metasoSearch).toHaveBeenCalledWith('上一轮 AI 正文', { apiKey: 'metaso-k' });
+      expect(metasoSearch).toHaveBeenCalledWith('上一轮 AI 正文', { apiKey: 'metaso-k', scope: 'webpage' });
 
       const allNodes = await db.nodes.toArray();
       expect(allNodes).toHaveLength(3);
@@ -616,7 +616,7 @@ describe('useAiActions', () => {
         await result.current.submitAiThreadFollowUp('parent-ai', '联网搜索 仅用这个');
       });
 
-      expect(metasoSearch).toHaveBeenCalledWith('仅用这个', { apiKey: 'metaso-k' });
+      expect(metasoSearch).toHaveBeenCalledWith('仅用这个', { apiKey: 'metaso-k', scope: 'webpage' });
     });
 
     it('无秘塔 Key 时不调用检索', async () => {

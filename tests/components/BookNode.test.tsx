@@ -1,9 +1,9 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { BookNode } from '../../src/components/nodes/BookNode';
 import { encodeBookContent } from '../../src/utils/bookPayload';
-import type { CanvasNode } from '../../src/db';
+import { db, type CanvasNode } from '../../src/db';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -27,7 +27,7 @@ vi.mock('lucide-react', () => {
   };
 });
 
-function makeBookNode(): CanvasNode {
+function makeBookNode(overrides: Partial<CanvasNode> = {}): CanvasNode {
   return {
     id: 'b1',
     type: 'book',
@@ -43,18 +43,37 @@ function makeBookNode(): CanvasNode {
         { title: 'Ch2', text: 'Second unit text' },
       ],
     }),
+    ...overrides,
   };
 }
 
 describe('BookNode', () => {
-  it('shows first unit and navigates to next', () => {
-    const { getByText, getByLabelText, queryByText } = render(
-      <BookNode node={makeBookNode()} editingNodeId={null} setEditingNodeId={vi.fn()} />,
+  beforeEach(async () => {
+    await db.nodes.clear();
+    await db.nodes.add(makeBookNode());
+  });
+
+  it('restores persisted page index', () => {
+    const { getByText, queryByText } = render(
+      <BookNode
+        node={makeBookNode({ bookPageIndex: 1 })}
+        editingNodeId={null}
+        setEditingNodeId={vi.fn()}
+      />,
     );
-    expect(getByText('First unit text')).toBeInTheDocument();
-    fireEvent.click(getByLabelText('nodes.book_next'));
     expect(queryByText('First unit text')).not.toBeInTheDocument();
     expect(getByText('Second unit text')).toBeInTheDocument();
+  });
+
+  it('persists page index when navigating', async () => {
+    const { getByLabelText } = render(
+      <BookNode node={makeBookNode()} editingNodeId={null} setEditingNodeId={vi.fn()} />,
+    );
+    fireEvent.click(getByLabelText('nodes.book_next'));
+    await waitFor(async () => {
+      const saved = await db.nodes.get('b1');
+      expect(saved?.bookPageIndex).toBe(1);
+    });
   });
 
   it('marks current unit as AI context text', () => {
