@@ -13,9 +13,19 @@ async fn openai_compatible_chat(api_key: String, url: String, body: Value) -> Re
   let client = reqwest::Client::builder()
     .build()
     .map_err(|e| e.to_string())?;
+  openai_compatible_chat_inner(&client, &api_key, &url, body).await
+}
 
+/// HTTP body extracted as a `pub(crate)` helper so the integration tests can
+/// call it directly with a local reqwest client and a mock HTTP server.
+pub async fn openai_compatible_chat_inner(
+  client: &reqwest::Client,
+  api_key: &str,
+  url: &str,
+  body: Value,
+) -> Result<String, String> {
   let response = client
-    .post(&url)
+    .post(url)
     .header("Authorization", format!("Bearer {api_key}"))
     .header("Content-Type", "application/json")
     .json(&body)
@@ -105,26 +115,9 @@ async fn openai_compatible_chat_stream(
       let line = pending[..nl].trim_end_matches('\r').to_string();
       pending = pending[nl + 1..].to_string();
 
-      let trimmed = line.trim();
-      let data = match trimmed.strip_prefix("data:") {
-        Some(rest) => rest.trim_start(),
-        None => continue,
-      };
-      if data == "[DONE]" {
-        continue;
-      }
-      let v: Value = match serde_json::from_str(data) {
-        Ok(v) => v,
-        Err(_) => continue,
-      };
-      let delta = v["choices"]
-        .get(0)
-        .and_then(|c| c.get("delta"))
-        .and_then(|d| d.get("content"))
-        .and_then(|c| c.as_str());
-      if let Some(d) = delta {
-        if !d.is_empty() {
-          full.push_str(d);
+      if let Some(delta) = parse_sse_chunk(&line) {
+        if !delta.is_empty() {
+          full.push_str(&delta);
           let payload = serde_json::json!({ "id": &stream_id, "text": &full });
           let _ = app.emit("lab-ai-stream", payload);
         }
@@ -133,6 +126,24 @@ async fn openai_compatible_chat_stream(
   }
 
   Ok(full)
+}
+
+/// Extracts the content delta from a single SSE `data:` line.
+/// Returns `Some(delta)` for valid data lines (including empty content),
+/// `None` for non-data lines, comments, or the `[DONE]` sentinel.
+pub fn parse_sse_chunk(line: &str) -> Option<String> {
+  let trimmed = line.trim();
+  let data = trimmed.strip_prefix("data:")?.trim_start();
+  if data == "[DONE]" {
+    return None;
+  }
+  let v: Value = serde_json::from_str(data).ok()?;
+  let delta = v["choices"]
+    .get(0)
+    .and_then(|c| c.get("delta"))
+    .and_then(|d| d.get("content"))
+    .and_then(|c| c.as_str())?;
+  Some(delta.to_string())
 }
 
 /// Metaso (秘塔) search API proxy.
@@ -148,14 +159,25 @@ async fn metaso_search(
     let client = reqwest::Client::builder()
         .build()
         .map_err(|e| e.to_string())?;
+    metaso_search_inner(&client, &api_key, &query, scope, size, METASO_BASE_URL).await
+}
 
-    let scope = match scope.as_deref().map(str::trim).unwrap_or("webpage") {
-        "image" => "image",
-        "video" => "video",
-        "podcast" => "podcast",
-        _ => "webpage",
-    };
-    let size = size.unwrap_or(5).clamp(1, 20);
+/// Default base URL for Metaso. Exposed as a const so the test suite can use
+/// the same value in error-message expectations.
+pub const METASO_BASE_URL: &str = "https://metaso.cn/api/v1/search";
+
+/// HTTP body of `metaso_search` extracted as a `pub` helper for integration
+/// testing. The `base_url` is the full Metaso endpoint URL — the production
+/// command passes [`METASO_BASE_URL`]; tests can inject a local mock server.
+pub async fn metaso_search_inner(
+    client: &reqwest::Client,
+    api_key: &str,
+    query: &str,
+    scope: Option<String>,
+    size: Option<u32>,
+    base_url: &str,
+) -> Result<String, String> {
+    let (scope, size) = normalize_metaso_params(scope, size);
 
     let body = serde_json::json!({
         "q": query,
@@ -164,7 +186,7 @@ async fn metaso_search(
     });
 
     let response = client
-        .post("https://metaso.cn/api/v1/search")
+        .post(base_url)
         .header("Authorization", format!("Bearer {api_key}"))
         .header("Content-Type", "application/json")
         .json(&body)
@@ -187,14 +209,37 @@ async fn metaso_search(
     Ok(text)
 }
 
+/// Pure helper: normalizes the optional `scope` and `size` parameters for Metaso.
+/// `scope`: "image" | "video" | "podcast" pass through (after trim); anything else → "webpage".
+/// `size`: defaults to 5, clamped to [1, 20].
+pub fn normalize_metaso_params(scope: Option<String>, size: Option<u32>) -> (String, u32) {
+    let scope = match scope.as_deref().map(str::trim).unwrap_or("webpage") {
+        "image" => "image",
+        "video" => "video",
+        "podcast" => "podcast",
+        _ => "webpage",
+    };
+    let size = size.unwrap_or(5).clamp(1, 20);
+    (scope.to_string(), size)
+}
+
+/// Validate a URL for `open_external_url`: trims, requires `http://` or `https://` prefix.
+pub fn open_external_url_validate(url: &str) -> Result<String, String> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return Err("Only http:// and https:// URLs are allowed".into());
+    }
+    if !(trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
+        return Err("Only http:// and https:// URLs are allowed".into());
+    }
+    Ok(trimmed.to_string())
+}
+
 /// Open an http(s) URL in the system default browser. Webview `target=_blank` is unreliable in Tauri.
 #[tauri::command]
 fn open_external_url(url: String) -> Result<(), String> {
-    let url = url.trim();
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err("Only http:// and https:// URLs are allowed".into());
-    }
-    open::that(url).map_err(|e| e.to_string())
+    let validated = open_external_url_validate(&url)?;
+    open::that(validated).map_err(|e| e.to_string())
 }
 
 /// 内置 llama.cpp：加载本地 GGUF，使用模型自带 chat 模板完成一轮对话（桌面端离线）。

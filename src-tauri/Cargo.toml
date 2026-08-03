@@ -27,3 +27,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 name = "spoor"
 path = "src/main.rs"
 
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util", "time", "sync"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde_json = "1"

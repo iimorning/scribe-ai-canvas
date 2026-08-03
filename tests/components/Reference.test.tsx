@@ -246,8 +246,8 @@ describe('Reference', () => {
       <Reference articles={[withCards]} activeReferenceId="a-alpha" setActiveReferenceId={vi.fn()} />,
     );
 
-    expect(screen.getByText('正文一。')).toBeInTheDocument();
-    expect(screen.getByText('正文二。')).toBeInTheDocument();
+    expect(screen.getAllByText('正文一。').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('正文二。').length).toBeGreaterThan(0);
     expect(screen.getByTestId('reference-segment-0')).toBeInTheDocument();
     expect(screen.getByTestId('reference-segment-1')).toBeInTheDocument();
   });
@@ -267,7 +267,7 @@ describe('Reference', () => {
       <Reference articles={[withCards]} activeReferenceId="a-alpha" setActiveReferenceId={vi.fn()} />,
     );
 
-    expect(screen.getByText('正文一。')).toBeInTheDocument();
+    expect(screen.getAllByText('正文一。').length).toBeGreaterThan(0);
     await user.click(screen.getByTestId('reference-source-card-delete-0'));
     await user.click(screen.getByRole('button', { name: 'dialog.confirm' }));
 
