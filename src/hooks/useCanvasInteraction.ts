@@ -43,6 +43,12 @@ export function useCanvasInteraction(
   connectingFrom: string | null,
   setConnectingFrom: (v: string | null) => void,
   canvasId: string = 'default',
+  /**
+   * When the canvas host unmounts (e.g. leaving the Personal tab), pass false then
+   * true on return so the non-passive wheel listener is re-bound to the new DOM node.
+   * Otherwise Ctrl+wheel falls through to the browser and zooms the whole UI.
+   */
+  enabled: boolean = true,
 ) {
   const [canvasTransform, setCanvasTransformState] = useState<CanvasTransform>(() =>
     loadCanvasViewport(canvasId),
@@ -98,8 +104,9 @@ export function useCanvasInteraction(
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
-  // Wheel zoom & scroll
+  // Wheel zoom & scroll — re-bind whenever the canvas host is shown again.
   useEffect(() => {
+    if (!enabled) return;
     const main = mainRef.current;
     if (!main) return;
     const onWheel = (e: WheelEvent) => {
@@ -133,6 +140,7 @@ export function useCanvasInteraction(
         }
       }
 
+      // Must run: without this, Ctrl+wheel becomes browser page zoom.
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
         setCanvasTransform(prev => {
@@ -162,7 +170,7 @@ export function useCanvasInteraction(
     };
     main.addEventListener('wheel', onWheel, { passive: false });
     return () => main.removeEventListener('wheel', onWheel);
-  }, [mainRef]);
+  }, [mainRef, enabled]);
 
   // Pan start handler
   const handlePanStart = (e: React.PointerEvent) => {

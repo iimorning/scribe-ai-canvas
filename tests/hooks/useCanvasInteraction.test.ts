@@ -65,6 +65,40 @@ describe('useCanvasInteraction', () => {
     expect(mainEl.addEventListener).toHaveBeenCalledWith('wheel', expect.any(Function), { passive: false });
   });
 
+  it('enabled 从 false→true 时会重新绑定 wheel 监听（避免切回画布后 Ctrl+滚轮变成整页缩放）', () => {
+    const mainRef = { current: mainEl } as React.RefObject<HTMLDivElement | null>;
+    const contentContainerRef = createRef<HTMLDivElement>() as React.RefObject<HTMLDivElement | null>;
+    const svgRef = createRef<SVGSVGElement>() as React.RefObject<SVGSVGElement | null>;
+    const edgeLabelsRef = createRef<HTMLDivElement>() as React.RefObject<HTMLDivElement | null>;
+    const nodesRef = { current: {} } as React.RefObject<Record<string, HTMLElement | null>>;
+    const setConnectingFrom = vi.fn();
+
+    const { rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) =>
+        useCanvasInteraction(
+          mainRef,
+          contentContainerRef,
+          svgRef,
+          edgeLabelsRef,
+          nodesRef,
+          null,
+          setConnectingFrom,
+          'test-canvas',
+          enabled,
+        ),
+      { initialProps: { enabled: false } },
+    );
+
+    expect(mainEl.addEventListener).not.toHaveBeenCalledWith(
+      'wheel',
+      expect.any(Function),
+      { passive: false },
+    );
+
+    rerender({ enabled: true });
+    expect(mainEl.addEventListener).toHaveBeenCalledWith('wheel', expect.any(Function), { passive: false });
+  });
+
   it('wheel 在仍可纵向滚动的子元素内时提前返回，不触发画布平移', () => {
     const { result } = setupHook();
     const wheelEntry = vi.mocked(mainEl.addEventListener).mock.calls.find((c) => c[0] === 'wheel');

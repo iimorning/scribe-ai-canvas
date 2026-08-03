@@ -163,6 +163,7 @@ export default function App() {
     connectingFrom,
     setConnectingFrom,
     activeCanvasId,
+    activeTab === 'personal',
   );
 
   const handleCanvasPanPointerDown = useCallback(
