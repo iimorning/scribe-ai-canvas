@@ -79,6 +79,7 @@ vi.mock(import('react-i18next'), async () => {
         if (key === 'voice.need_asr_keys') return 'need-asr-keys';
         if (key === 'voice.need_minimax_key') return 'need-minimax-key';
         if (key === 'voice.config_missing') return 'config-missing';
+        if (key === 'voice.book_voice_parse_failed') return 'parse-failed-stub';
         return key;
       },
     }),
@@ -118,8 +119,17 @@ beforeEach(() => {
   createTtsSentenceQueue.mockClear();
   callUniversalAI.mockClear();
   callUniversalAI.mockImplementation(async (args: { onStreamChunk?: (acc: string) => void }) => {
-    args.onStreamChunk?.('hello');
-    return 'AI reply text';
+    const json = JSON.stringify({
+      summary: 'AI reply text',
+      hub: 'Theme hub',
+      branches: [
+        { title: 'One', content: 'first viewpoint' },
+        { title: 'Two', content: 'second viewpoint' },
+        { title: 'Three', content: 'third viewpoint' },
+      ],
+    });
+    args.onStreamChunk?.(json);
+    return json;
   });
 });
 
@@ -132,16 +142,26 @@ function renderChat(
     aiConfig?: typeof FULL_AI_CONFIG | null;
     pageContext?: { text: string; label: string };
     disabled?: boolean;
+    cardSpawner?: {
+      spawnHub: (hub: string) => Promise<{ hubId: string }>;
+      spawnBranch: (
+        hubId: string,
+        branch: { title: string; content: string },
+        index: number,
+        branchCount: number,
+      ) => Promise<void>;
+    };
   } = {},
 ) {
   const initialProps = {
     aiConfig: options.aiConfig === undefined ? FULL_AI_CONFIG : options.aiConfig,
     pageContext: options.pageContext ?? { text: 'page1', label: 'Demo · Ch1' },
     disabled: options.disabled,
+    cardSpawner: options.cardSpawner,
   };
   return renderHook(
-    ({ aiConfig, pageContext, disabled }: typeof initialProps) =>
-      useBookVoiceChat({ aiConfig, pageContext, disabled }),
+    ({ aiConfig, pageContext, disabled, cardSpawner }: typeof initialProps) =>
+      useBookVoiceChat({ aiConfig, pageContext, disabled, cardSpawner }),
     { wrapper: wrap, initialProps },
   );
 }
@@ -398,6 +418,47 @@ describe('useBookVoiceChat — AI turn', () => {
     expect(result.current.messages.length).toBeGreaterThanOrEqual(2);
     expect(result.current.messages[0]?.role).toBe('user');
     expect(result.current.messages[1]?.role).toBe('assistant');
+    expect(result.current.messages[1]?.text).toBe('AI reply text');
+  });
+
+  it('spawns hub then each branch card in sync with spoken segments', async () => {
+    const callOrder: string[] = [];
+    const spawnHub = vi.fn(async (hub: string) => {
+      callOrder.push(`hub:${hub}`);
+      return { hubId: 'hub-1' };
+    });
+    const spawnBranch = vi.fn(async (_hubId: string, branch: { title: string }, index: number) => {
+      callOrder.push(`branch:${index}:${branch.title}`);
+    });
+    ttsPushAccumulated.mockImplementation((text: string) => {
+      callOrder.push(`speak:${text}`);
+    });
+
+    try {
+      const { result } = renderChat({ cardSpawner: { spawnHub, spawnBranch } });
+      await act(async () => {
+        await result.current.toggle();
+        await flushMicrotasks();
+        asrHandlers.onDefinite?.('讲讲这页');
+        await flushMicrotasks();
+        await result.current.toggle();
+        await flushMicrotasks();
+      });
+
+      expect(callOrder).toEqual([
+        'hub:Theme hub',
+        'speak:AI reply text',
+        'branch:0:One',
+        'speak:One。first viewpoint。',
+        'branch:1:Two',
+        'speak:Two。second viewpoint。',
+        'branch:2:Three',
+        'speak:Three。third viewpoint。',
+      ]);
+      expect(ttsFlush).toHaveBeenCalled();
+    } finally {
+      ttsPushAccumulated.mockReset();
+    }
   });
 
   it('records the formatted error text in the assistant bubble when callUniversalAI throws', async () => {

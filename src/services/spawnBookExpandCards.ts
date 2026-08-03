@@ -75,6 +75,29 @@ export function parseBookExpandPlan(text: string): BookExpandPlan | null {
   }
 }
 
+export type BookVoiceReply = {
+  /** Spoken reply for TTS (not the card JSON). */
+  summary: string;
+  plan: BookExpandPlan;
+};
+
+/**
+ * Book voice chat returns spoken `summary` plus a hub/branches concept map.
+ * Cards use the same shape as selection expand.
+ */
+export function parseBookVoiceReply(text: string): BookVoiceReply | null {
+  try {
+    const raw = parseLenientLlmJson(text);
+    const plan = normalizeBookExpandPlan(raw);
+    if (!plan || !raw || typeof raw !== 'object') return null;
+    const summary = asNonEmptyString((raw as Record<string, unknown>).summary, 400);
+    if (!summary) return null;
+    return { summary, plan };
+  } catch {
+    return null;
+  }
+}
+
 export function bookExpandBranchIndex(node: CanvasNode): number {
   if (typeof node.bookExpandIndex === 'number') return node.bookExpandIndex;
   return 0;
@@ -167,6 +190,84 @@ export async function setBookExpandBranchesCollapsed(
   return branches.length;
 }
 
+/** Spoken line for one viewpoint card (title + content). */
+export function spokenBookVoiceBranchLine(branch: BookExpandBranch): string {
+  const title = branch.title.replace(/\s+/g, ' ').trim();
+  const content = branch.content.replace(/\s+/g, ' ').trim();
+  if (!title) return content;
+  if (!content || content === title) {
+    return /[。！？!?]$/.test(title) ? title : `${title}。`;
+  }
+  const body = /[。！？!?]$/.test(content) ? content : `${content}。`;
+  return `${title}。${body}`;
+}
+
+export async function spawnBookExpandHubCard(options: {
+  bookNodeId: string;
+  canvasId: string;
+  bookPos: { x: number; y: number; width?: number; height?: number };
+  hub: string;
+}): Promise<{ hubId: string; hubX: number; hubY: number }> {
+  const { bookNodeId, canvasId, bookPos, hub } = options;
+  const bookW = bookPos.width ?? 380;
+  const bookH = bookPos.height ?? 520;
+  const hubId = crypto.randomUUID();
+  const hubX = bookPos.x + bookW + 48;
+  const hubY = bookPos.y + Math.max(0, bookH / 2 - BOOK_EXPAND_HUB_HEIGHT / 2);
+
+  await db.nodes.add({
+    id: hubId,
+    canvasId,
+    type: 'theme',
+    content: hub,
+    x: hubX,
+    y: hubY,
+    width: BOOK_EXPAND_HUB_WIDTH,
+    height: BOOK_EXPAND_HUB_HEIGHT,
+    bookExpandBranchesCollapsed: false,
+  });
+  await db.edges.add({
+    id: crypto.randomUUID(),
+    canvasId,
+    from: bookNodeId,
+    to: hubId,
+  });
+  return { hubId, hubX, hubY };
+}
+
+export async function spawnBookExpandBranchCard(options: {
+  canvasId: string;
+  hubId: string;
+  hubX: number;
+  hubY: number;
+  branch: BookExpandBranch;
+  index: number;
+  branchCount: number;
+}): Promise<string> {
+  const { canvasId, hubId, hubX, hubY, branch, index, branchCount } = options;
+  const id = crypto.randomUUID();
+  const markdown = `**${branch.title}**\n\n${branch.content}`;
+  await db.nodes.add({
+    id,
+    canvasId,
+    type: 'text',
+    content: markdown,
+    x: hubX + BOOK_EXPAND_CHILD_OFFSET_X,
+    y: bookExpandBranchLaneY(hubY, index, branchCount, BOOK_EXPAND_HUB_HEIGHT),
+    width: BOOK_EXPAND_CHILD_WIDTH,
+    height: BOOK_EXPAND_CHILD_HEIGHT,
+    bookExpandParentId: hubId,
+    bookExpandIndex: index,
+  });
+  await db.edges.add({
+    id: crypto.randomUUID(),
+    canvasId,
+    from: hubId,
+    to: id,
+  });
+  return id;
+}
+
 /**
  * Spawn a theme hub + linked note cards to the right of a book node.
  * Edges: book → hub → each branch.
@@ -180,29 +281,12 @@ export async function spawnBookExpandCards(options: {
 }): Promise<{ hubId: string; branchIds: string[] }> {
   const { bookNodeId, canvasId, bookPos, plan } = options;
   const staggerMs = options.staggerMs ?? DEFAULT_STAGGER_MS;
-  const bookW = bookPos.width ?? 380;
-  const bookH = bookPos.height ?? 520;
 
-  const hubId = crypto.randomUUID();
-  const hubX = bookPos.x + bookW + 48;
-  const hubY = bookPos.y + Math.max(0, bookH / 2 - BOOK_EXPAND_HUB_HEIGHT / 2);
-
-  await db.nodes.add({
-    id: hubId,
+  const { hubId, hubX, hubY } = await spawnBookExpandHubCard({
+    bookNodeId,
     canvasId,
-    type: 'theme',
-    content: plan.hub,
-    x: hubX,
-    y: hubY,
-    width: BOOK_EXPAND_HUB_WIDTH,
-    height: BOOK_EXPAND_HUB_HEIGHT,
-    bookExpandBranchesCollapsed: false,
-  });
-  await db.edges.add({
-    id: crypto.randomUUID(),
-    canvasId,
-    from: bookNodeId,
-    to: hubId,
+    bookPos,
+    hub: plan.hub,
   });
 
   const branchIds: string[] = [];
@@ -210,26 +294,14 @@ export async function spawnBookExpandCards(options: {
     if (i > 0) {
       await new Promise((r) => setTimeout(r, staggerMs));
     }
-    const branch = plan.branches[i]!;
-    const id = crypto.randomUUID();
-    const markdown = `**${branch.title}**\n\n${branch.content}`;
-    await db.nodes.add({
-      id,
+    const id = await spawnBookExpandBranchCard({
       canvasId,
-      type: 'text',
-      content: markdown,
-      x: hubX + BOOK_EXPAND_CHILD_OFFSET_X,
-      y: bookExpandBranchLaneY(hubY, i, plan.branches.length, BOOK_EXPAND_HUB_HEIGHT),
-      width: BOOK_EXPAND_CHILD_WIDTH,
-      height: BOOK_EXPAND_CHILD_HEIGHT,
-      bookExpandParentId: hubId,
-      bookExpandIndex: i,
-    });
-    await db.edges.add({
-      id: crypto.randomUUID(),
-      canvasId,
-      from: hubId,
-      to: id,
+      hubId,
+      hubX,
+      hubY,
+      branch: plan.branches[i]!,
+      index: i,
+      branchCount: plan.branches.length,
     });
     branchIds.push(id);
   }

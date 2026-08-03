@@ -13,6 +13,11 @@ import {
   nextBookReaderScrollTop,
 } from '../../utils/bookReaderScroll';
 import { useBookVoiceChat } from '../../hooks/useBookVoiceChat';
+import {
+  spawnBookExpandBranchCard,
+  spawnBookExpandHubCard,
+} from '../../services/spawnBookExpandCards';
+import type { BookVoiceCardSpawner } from '../../hooks/useBookVoiceChat';
 
 function clampPageIndex(index: number, unitCount: number): number {
   if (unitCount <= 0) return 0;
@@ -378,10 +383,49 @@ export function BookNode({
     (onExtractSelectionToCard || onAskAboutSelection || onExpandSelection) &&
     !isExpanding;
 
+  const voiceHubLayoutRef = useRef<{ hubId: string; hubX: number; hubY: number } | null>(null);
+
+  const voiceCardSpawner = useMemo<BookVoiceCardSpawner>(() => ({
+    spawnHub: async (hubLabel) => {
+      // Nudge each new voice concept map so successive turns don't stack on one spot.
+      const outEdges = await db.edges.where('from').equals(node.id).toArray();
+      const hubNodes = await db.nodes.bulkGet(outEdges.map((e) => e.to));
+      const priorHubs = hubNodes.filter((n) => n?.type === 'theme').length;
+      const laneNudge = priorHubs * 56;
+      const placed = await spawnBookExpandHubCard({
+        bookNodeId: node.id,
+        canvasId: node.canvasId ?? 'default',
+        bookPos: {
+          x: node.x + laneNudge,
+          y: node.y + laneNudge,
+          width: node.width,
+          height: node.height,
+        },
+        hub: hubLabel,
+      });
+      voiceHubLayoutRef.current = placed;
+      return { hubId: placed.hubId };
+    },
+    spawnBranch: async (hubId, branch, index, branchCount) => {
+      const layout = voiceHubLayoutRef.current;
+      if (!layout || layout.hubId !== hubId) return;
+      await spawnBookExpandBranchCard({
+        canvasId: node.canvasId ?? 'default',
+        hubId,
+        hubX: layout.hubX,
+        hubY: layout.hubY,
+        branch,
+        index,
+        branchCount,
+      });
+    },
+  }), [node.canvasId, node.height, node.id, node.width, node.x, node.y]);
+
   const voice = useBookVoiceChat({
     aiConfig: aiConfig ?? null,
     pageContext: { text: unitText, label: selectionSource },
     disabled: !aiConfig || voiceChatDisabled,
+    cardSpawner: voiceCardSpawner,
   });
   const voiceActive = voice.active;
   const voicePhase = voice.phase;

@@ -8,6 +8,11 @@ import {
 } from '../constants/voiceWriting';
 import { callUniversalAI } from '../services/ai';
 import { startMicCapture, type MicCapture } from '../services/micCapture';
+import type { BookExpandBranch } from '../services/spawnBookExpandCards';
+import {
+  parseBookVoiceReply,
+  spokenBookVoiceBranchLine,
+} from '../services/spawnBookExpandCards';
 import { hasVolcAsrCredentials, openVolcAsrSession, type VolcAsrSession } from '../services/volcAsr';
 import { combineSystemParts, getLocaleDirective } from '../utils/aiI18n';
 import { createTtsSentenceQueue } from '../utils/ttsSentenceQueue';
@@ -17,6 +22,19 @@ export type BookVoicePhase = 'idle' | 'listening' | 'thinking' | 'speaking';
 export type BookVoiceMessage = {
   role: 'user' | 'assistant';
   text: string;
+};
+
+/**
+ * Progressive card sink: hub first, then one branch card as that viewpoint is spoken.
+ */
+export type BookVoiceCardSpawner = {
+  spawnHub: (hubLabel: string) => Promise<{ hubId: string }>;
+  spawnBranch: (
+    hubId: string,
+    branch: BookExpandBranch,
+    index: number,
+    branchCount: number,
+  ) => Promise<void>;
 };
 
 /** After the last ASR update, wait this long before auto-submitting the turn. */
@@ -30,9 +48,19 @@ type UseBookVoiceChatParams = {
   pageContext: { text: string; label: string };
   /** Disable starting (e.g. when canvas voice mode is active). */
   disabled?: boolean;
+  /**
+   * Spawn viewpoint cards in sync with speech: hub before the intro, each branch
+   * card right as that viewpoint starts being read aloud.
+   */
+  cardSpawner?: BookVoiceCardSpawner;
 };
 
-export function useBookVoiceChat({ aiConfig, pageContext, disabled }: UseBookVoiceChatParams) {
+export function useBookVoiceChat({
+  aiConfig,
+  pageContext,
+  disabled,
+  cardSpawner,
+}: UseBookVoiceChatParams) {
   const { t } = useTranslation();
   const { alert: appAlert } = useAppDialog();
 
@@ -53,6 +81,8 @@ export function useBookVoiceChat({ aiConfig, pageContext, disabled }: UseBookVoi
   const startingRef = useRef(false);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const runAiTurnRef = useRef<(userText: string) => Promise<void>>(async () => {});
+  const cardSpawnerRef = useRef(cardSpawner);
+  cardSpawnerRef.current = cardSpawner;
   /**
    * Suppress onClose→stop while we intentionally tear down ASR (finishRound / stop).
    * Must stay true across the async WebSocket onclose tick, or stop() wipes the
@@ -231,19 +261,31 @@ export function useBookVoiceChat({ aiConfig, pageContext, disabled }: UseBookVoi
     }
 
     const minimaxKey = (aiConfig.minimaxApiKey ?? '').trim();
-    const tts = createTtsSentenceQueue({
+    const ttsOpts = {
       apiKey: minimaxKey,
       model: aiConfig.minimaxTtsModel || MINIMAX_DEFAULT_TTS_MODEL,
       voiceId: aiConfig.minimaxVoiceId || MINIMAX_DEFAULT_VOICE_ID,
-      onSpeakingChange: (speaking) => {
+      onSpeakingChange: (speaking: boolean) => {
         if (speaking) setPhaseSync('speaking');
       },
-      onError: (message) => appAlert({ message }),
-    });
-    ttsRef.current = tts;
+      onError: (message: string) => appAlert({ message }),
+    };
+
+    /** One TTS stream per spoken segment so we can await idle between viewpoints. */
+    const speakSegment = async (text: string) => {
+      const line = text.replace(/\s+/g, ' ').trim();
+      if (!line || !activeRef.current) return;
+      const tts = createTtsSentenceQueue(ttsOpts);
+      ttsRef.current = tts;
+      tts.pushAccumulatedText(line);
+      tts.flush();
+      await tts.waitUntilIdle();
+      if (ttsRef.current === tts) ttsRef.current = null;
+    };
 
     let assistantText = '';
     try {
+      // Do not stream into TTS — the model returns JSON; segments are spoken after parse.
       assistantText = await callUniversalAI({
         config: aiConfig,
         systemInstruction: combineSystemParts(
@@ -263,7 +305,6 @@ export function useBookVoiceChat({ aiConfig, pageContext, disabled }: UseBookVoi
             next[next.length - 1] = { ...assistantMsg };
             return next;
           });
-          tts?.pushAccumulatedText(acc);
         },
       });
     } catch (err) {
@@ -276,9 +317,57 @@ export function useBookVoiceChat({ aiConfig, pageContext, disabled }: UseBookVoi
       });
     }
 
-    tts?.flush();
-    await tts?.waitUntilIdle();
-    if (ttsRef.current === tts) ttsRef.current = null;
+    const parsed = parseBookVoiceReply(assistantText);
+    if (parsed) {
+      assistantMsg.text = parsed.summary;
+      setMessages((prev) => {
+        const next = [...prev];
+        next[next.length - 1] = { ...assistantMsg };
+        return next;
+      });
+
+      const spawner = cardSpawnerRef.current;
+      let hubId: string | null = null;
+      if (spawner) {
+        try {
+          // Theme hub appears as the intro starts.
+          hubId = (await spawner.spawnHub(parsed.plan.hub)).hubId;
+        } catch (err) {
+          console.error('[Spoor] book voice spawn hub failed', err);
+        }
+      }
+
+      await speakSegment(parsed.summary);
+
+      const branches = parsed.plan.branches;
+      for (let i = 0; i < branches.length; i++) {
+        if (!activeRef.current) return;
+        const branch = branches[i]!;
+        if (spawner && hubId) {
+          try {
+            // Card appears as this viewpoint begins — not earlier.
+            await spawner.spawnBranch(hubId, branch, i, branches.length);
+          } catch (err) {
+            console.error('[Spoor] book voice spawn branch failed', err);
+          }
+        }
+        await speakSegment(spokenBookVoiceBranchLine(branch));
+      }
+    } else if (assistantText.trim()) {
+      // Graceful fallback: plain prose still gets spoken; broken JSON gets a short notice.
+      const trimmed = assistantText.trim();
+      const looksBrokenJson = trimmed.startsWith('{') || trimmed.startsWith('[');
+      const speakText = looksBrokenJson ? t('voice.book_voice_parse_failed') : trimmed;
+      if (!looksBrokenJson) {
+        assistantMsg.text = speakText;
+        setMessages((prev) => {
+          const next = [...prev];
+          next[next.length - 1] = { ...assistantMsg };
+          return next;
+        });
+      }
+      await speakSegment(speakText);
+    }
 
     if (!activeRef.current) return;
     // Loop: resume listening for the next turn.

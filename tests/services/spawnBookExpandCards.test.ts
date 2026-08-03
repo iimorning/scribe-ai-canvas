@@ -2,9 +2,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   normalizeBookExpandPlan,
   parseBookExpandPlan,
+  parseBookVoiceReply,
   resolveBookExpandBranches,
   setBookExpandBranchesCollapsed,
   spawnBookExpandCards,
+  spokenBookVoiceBranchLine,
 } from '../../src/services/spawnBookExpandCards';
 import { db } from '../../src/db';
 
@@ -40,6 +42,42 @@ describe('parseBookExpandPlan', () => {
 \`\`\``);
     expect(plan?.hub).toBe('主题');
     expect(plan?.branches).toHaveLength(3);
+  });
+});
+
+describe('parseBookVoiceReply', () => {
+  it('extracts spoken summary plus hub/branches', () => {
+    const reply = parseBookVoiceReply(JSON.stringify({
+      summary: '这页在讲注意力的代价。',
+      hub: '注意力经济',
+      branches: [
+        { title: '稀缺', content: '注意力是有限资源' },
+        { title: '争夺', content: '产品在抢夺焦点' },
+        { title: '代价', content: '深度思考被挤掉' },
+      ],
+    }));
+    expect(reply?.summary).toBe('这页在讲注意力的代价。');
+    expect(reply?.plan.hub).toBe('注意力经济');
+    expect(reply?.plan.branches).toHaveLength(3);
+  });
+
+  it('rejects plans without a spoken summary', () => {
+    expect(
+      parseBookVoiceReply(JSON.stringify({
+        hub: '主题',
+        branches: [
+          { title: '一', content: 'a' },
+          { title: '二', content: 'b' },
+        ],
+      })),
+    ).toBeNull();
+  });
+});
+
+describe('spokenBookVoiceBranchLine', () => {
+  it('joins title and content into one spoken line', () => {
+    expect(spokenBookVoiceBranchLine({ title: '稀缺', content: '注意力是有限资源' }))
+      .toBe('稀缺。注意力是有限资源。');
   });
 });
 
