@@ -304,14 +304,7 @@ export function PublishOutlineDialog({
         className="w-full max-w-2xl max-h-[88vh] bg-white rounded-2xl shadow-2xl border border-[#E6E4DF] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="px-6 pt-5 pb-4 border-b border-[#F4F1ED] bg-[#FAF9F6] flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <h2 className="font-serif text-lg font-bold text-[#1a1a1a] leading-snug flex items-center gap-2">
-              <PenLine className="w-4 h-4 text-[#C2410C]" />
-              {t('publish.outline_title')}
-            </h2>
-            <p className="text-xs font-sans text-[#8c8a84] mt-1">{t('publish.outline_edit_hint')}</p>
-          </div>
+        <div className="px-4 pt-3 pb-0 flex items-center justify-end">
           <button
             type="button"
             onClick={handleClose}
@@ -355,20 +348,22 @@ export function PublishOutlineDialog({
                 {outline.sections.map((s, i) => (
                   <div key={i} className="rounded-xl border border-[#E6E4DF] bg-white p-3 space-y-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-mono font-bold text-[#C2410C] tabular-nums">
+                      <span className="text-[11px] font-mono font-bold text-[#C2410C] tabular-nums shrink-0">
                         {i + 1}
                       </span>
-                      {s.cardId && (
-                        <span className="text-[10px] font-mono text-[#8c8a84] bg-[#F4F1ED] px-1.5 py-0.5 rounded">
-                          {t('publish.outline_card_label', { id: s.cardId.slice(0, 8) })}
-                        </span>
-                      )}
-                      <div className="flex-1" />
+                      <input
+                        type="text"
+                        value={s.heading}
+                        onChange={(e) => updateSection(i, { heading: e.target.value })}
+                        disabled={busy}
+                        placeholder={t('publish.outline_heading_placeholder')}
+                        className="flex-1 min-w-0 px-2 py-1.5 rounded-md border border-[#E6E4DF] bg-white text-sm font-sans font-medium text-[#1a1a1a] focus:outline-none focus:border-[#C2410C] focus:ring-1 focus:ring-[#C2410C]/30 disabled:bg-[#F4F1ED]"
+                      />
                       <button
                         type="button"
                         onClick={() => moveSection(i, -1)}
                         disabled={busy || i === 0}
-                        className="p-1 rounded-md text-[#5a5a54] hover:bg-[#F4F1ED] disabled:opacity-30 transition-colors"
+                        className="p-1 rounded-md text-[#5a5a54] hover:bg-[#F4F1ED] disabled:opacity-30 transition-colors shrink-0"
                         aria-label={t('publish.outline_move_up')}
                       >
                         <ArrowUp className="w-3.5 h-3.5" />
@@ -377,7 +372,7 @@ export function PublishOutlineDialog({
                         type="button"
                         onClick={() => moveSection(i, 1)}
                         disabled={busy || i === outline.sections.length - 1}
-                        className="p-1 rounded-md text-[#5a5a54] hover:bg-[#F4F1ED] disabled:opacity-30 transition-colors"
+                        className="p-1 rounded-md text-[#5a5a54] hover:bg-[#F4F1ED] disabled:opacity-30 transition-colors shrink-0"
                         aria-label={t('publish.outline_move_down')}
                       >
                         <ArrowDown className="w-3.5 h-3.5" />
@@ -386,20 +381,12 @@ export function PublishOutlineDialog({
                         type="button"
                         onClick={() => removeSection(i)}
                         disabled={busy}
-                        className="p-1 rounded-md text-[#5a5a54] hover:bg-[#F4F1ED] disabled:opacity-30 transition-colors"
+                        className="p-1 rounded-md text-[#5a5a54] hover:bg-[#F4F1ED] disabled:opacity-30 transition-colors shrink-0"
                         aria-label={t('publish.outline_remove')}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                    <input
-                      type="text"
-                      value={s.heading}
-                      onChange={(e) => updateSection(i, { heading: e.target.value })}
-                      disabled={busy}
-                      placeholder={t('publish.outline_heading_placeholder')}
-                      className="w-full px-2 py-1.5 rounded-md border border-[#E6E4DF] bg-white text-sm font-sans font-medium text-[#1a1a1a] focus:outline-none focus:border-[#C2410C] focus:ring-1 focus:ring-[#C2410C]/30 disabled:bg-[#F4F1ED]"
-                    />
                     <textarea
                       value={s.summary}
                       onChange={(e) => updateSection(i, { summary: e.target.value })}
@@ -431,38 +418,14 @@ export function PublishOutlineDialog({
         </div>
 
         <div className="px-6 pb-5 pt-3 border-t border-[#F4F1ED] bg-[#FAF9F6] space-y-3">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => voice.toggle()}
-              disabled={!voiceEnabled || busy}
-              className={`p-2 rounded-full transition-colors disabled:opacity-30 ${
-                voice.active
-                  ? 'text-[#C2410C] bg-[#FFF7ED]'
-                  : 'text-[#5a5a54] bg-white border border-[#E6E4DF] hover:bg-[#F4F1ED]'
-              }`}
-              aria-label={voice.active ? t('publish.voice_stop') : t('publish.voice_start')}
-              title={
-                !voiceEnabled
-                  ? t('publish.voice_disabled_hint')
-                  : voice.active
-                    ? t('publish.voice_stop')
-                    : t('publish.voice_start')
-              }
-            >
-              {voice.active ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-            </button>
-            <span className="flex items-center gap-1.5 text-[10px] font-sans font-bold uppercase tracking-wider text-[#C2410C]">
-              {voice.active && voice.phase === 'listening' && <Mic className="w-3 h-3 animate-pulse" />}
-              {voice.active && voice.phase === 'thinking' && <Loader2 className="w-3 h-3 animate-spin" />}
-              {voice.active && voice.phase === 'speaking' && <Square className="w-3 h-3" />}
-              {voice.active ? voicePhaseLabel : t('publish.voice_idle')}
-            </span>
-            <div className="flex-1" />
-          </div>
-
           {voice.active && (
             <div className="max-h-32 overflow-y-auto scrollbar-hide space-y-1.5 text-xs font-sans leading-relaxed bg-white rounded-lg border border-[#E6E4DF] p-2.5">
+              <div className="flex items-center gap-1.5 text-[10px] font-sans font-bold uppercase tracking-wider text-[#C2410C] mb-1">
+                {voice.phase === 'listening' && <Mic className="w-3 h-3 animate-pulse" />}
+                {voice.phase === 'thinking' && <Loader2 className="w-3 h-3 animate-spin" />}
+                {voice.phase === 'speaking' && <Square className="w-3 h-3" />}
+                {voicePhaseLabel}
+              </div>
               {voice.messages.map((m, i) => (
                 <div key={i} className={m.role === 'user' ? 'text-[#5a5a54]' : 'text-[#1a1a1a]'}>
                   <span className="text-[9px] font-mono uppercase tracking-wider text-[#8c8a84] mr-1">
@@ -478,25 +441,47 @@ export function PublishOutlineDialog({
           )}
 
           <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={revisionText}
-              onChange={(e) => setRevisionText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  void handleRevise();
+            <div className="relative flex-1 min-w-0">
+              <input
+                type="text"
+                value={revisionText}
+                onChange={(e) => setRevisionText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    void handleRevise();
+                  }
+                }}
+                disabled={busy || !outline}
+                placeholder={t('publish.revise_placeholder')}
+                className="w-full pl-3 pr-10 py-2 rounded-lg border border-[#E6E4DF] bg-white text-sm font-sans text-[#1a1a1a] focus:outline-none focus:border-[#C2410C] focus:ring-1 focus:ring-[#C2410C]/30 disabled:bg-[#F4F1ED]"
+              />
+              <button
+                type="button"
+                onClick={() => voice.toggle()}
+                disabled={!voiceEnabled || busy}
+                className={`absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 rounded-md transition-colors disabled:opacity-30 ${
+                  voice.active
+                    ? 'text-[#C2410C] bg-[#FFF7ED]'
+                    : 'text-[#5a5a54] hover:bg-[#F4F1ED]'
+                }`}
+                aria-label={voice.active ? t('publish.voice_stop') : t('publish.voice_start')}
+                title={
+                  !voiceEnabled
+                    ? t('publish.voice_disabled_hint')
+                    : voice.active
+                      ? t('publish.voice_stop')
+                      : t('publish.voice_start')
                 }
-              }}
-              disabled={busy || !outline}
-              placeholder={t('publish.revise_placeholder')}
-              className="flex-1 px-3 py-2 rounded-lg border border-[#E6E4DF] bg-white text-sm font-sans text-[#1a1a1a] focus:outline-none focus:border-[#C2410C] focus:ring-1 focus:ring-[#C2410C]/30 disabled:bg-[#F4F1ED]"
-            />
+              >
+                {voice.active ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              </button>
+            </div>
             <button
               type="button"
               onClick={handleRevise}
               disabled={busy || !revisionText.trim() || !outline}
-              className="px-3 py-2 rounded-lg bg-[#1a1a1a] text-white text-sm font-sans font-bold hover:bg-[#333] disabled:opacity-40 transition-colors flex items-center gap-1.5"
+              className="px-3 py-2 rounded-lg bg-[#1a1a1a] text-white text-sm font-sans font-bold hover:bg-[#333] disabled:opacity-40 transition-colors flex items-center gap-1.5 shrink-0"
             >
               {phase === 'revising' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
               {phase === 'revising' ? t('publish.revise_applying') : t('publish.revise_apply')}
