@@ -190,6 +190,18 @@ export async function setBookExpandBranchesCollapsed(
   return branches.length;
 }
 
+/** Bounding box for a hub + vertical branch lane (used for open-space search). */
+export function bookExpandClusterSize(branchCount: number): { width: number; height: number } {
+  const n = Math.max(1, branchCount);
+  return {
+    width: BOOK_EXPAND_HUB_WIDTH + BOOK_EXPAND_CHILD_OFFSET_X + BOOK_EXPAND_CHILD_WIDTH,
+    height: Math.max(
+      BOOK_EXPAND_HUB_HEIGHT,
+      (n - 1) * BOOK_EXPAND_CHILD_GAP_Y + BOOK_EXPAND_CHILD_HEIGHT,
+    ),
+  };
+}
+
 /** Spoken line for one viewpoint card (title + content). */
 export function spokenBookVoiceBranchLine(branch: BookExpandBranch): string {
   const title = branch.title.replace(/\s+/g, ' ').trim();
@@ -207,13 +219,16 @@ export async function spawnBookExpandHubCard(options: {
   canvasId: string;
   bookPos: { x: number; y: number; width?: number; height?: number };
   hub: string;
+  /** Absolute hub top-left; when omitted, place to the right of the book. */
+  hubPos?: { x: number; y: number };
 }): Promise<{ hubId: string; hubX: number; hubY: number }> {
   const { bookNodeId, canvasId, bookPos, hub } = options;
   const bookW = bookPos.width ?? 380;
   const bookH = bookPos.height ?? 520;
   const hubId = crypto.randomUUID();
-  const hubX = bookPos.x + bookW + 48;
-  const hubY = bookPos.y + Math.max(0, bookH / 2 - BOOK_EXPAND_HUB_HEIGHT / 2);
+  const hubX = options.hubPos?.x ?? bookPos.x + bookW + 48;
+  const hubY =
+    options.hubPos?.y ?? bookPos.y + Math.max(0, bookH / 2 - BOOK_EXPAND_HUB_HEIGHT / 2);
 
   await db.nodes.add({
     id: hubId,

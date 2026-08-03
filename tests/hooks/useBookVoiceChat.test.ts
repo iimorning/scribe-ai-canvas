@@ -143,7 +143,7 @@ function renderChat(
     pageContext?: { text: string; label: string };
     disabled?: boolean;
     cardSpawner?: {
-      spawnHub: (hub: string) => Promise<{ hubId: string }>;
+      spawnHub: (hub: string, branchCount: number) => Promise<{ hubId: string }>;
       spawnBranch: (
         hubId: string,
         branch: { title: string; content: string },
@@ -423,8 +423,8 @@ describe('useBookVoiceChat — AI turn', () => {
 
   it('spawns hub then each branch card in sync with spoken segments', async () => {
     const callOrder: string[] = [];
-    const spawnHub = vi.fn(async (hub: string) => {
-      callOrder.push(`hub:${hub}`);
+    const spawnHub = vi.fn(async (hub: string, branchCount: number) => {
+      callOrder.push(`hub:${hub}:${branchCount}`);
       return { hubId: 'hub-1' };
     });
     const spawnBranch = vi.fn(async (_hubId: string, branch: { title: string }, index: number) => {
@@ -446,7 +446,7 @@ describe('useBookVoiceChat — AI turn', () => {
       });
 
       expect(callOrder).toEqual([
-        'hub:Theme hub',
+        'hub:Theme hub:3',
         'speak:AI reply text',
         'branch:0:One',
         'speak:One。first viewpoint。',

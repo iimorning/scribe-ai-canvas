@@ -6,6 +6,7 @@ import {
   resolveBookExpandBranches,
   setBookExpandBranchesCollapsed,
   spawnBookExpandCards,
+  bookExpandClusterSize,
   spokenBookVoiceBranchLine,
 } from '../../src/services/spawnBookExpandCards';
 import { db } from '../../src/db';
@@ -78,6 +79,14 @@ describe('spokenBookVoiceBranchLine', () => {
   it('joins title and content into one spoken line', () => {
     expect(spokenBookVoiceBranchLine({ title: '稀缺', content: '注意力是有限资源' }))
       .toBe('稀缺。注意力是有限资源。');
+  });
+});
+
+describe('bookExpandClusterSize', () => {
+  it('covers hub plus the vertical branch lane', () => {
+    const size = bookExpandClusterSize(3);
+    expect(size.width).toBeGreaterThan(500);
+    expect(size.height).toBeGreaterThan(400);
   });
 });
 

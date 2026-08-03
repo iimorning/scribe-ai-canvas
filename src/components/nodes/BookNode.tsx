@@ -14,10 +14,18 @@ import {
 } from '../../utils/bookReaderScroll';
 import { useBookVoiceChat } from '../../hooks/useBookVoiceChat';
 import {
+  BOOK_EXPAND_CHILD_HEIGHT,
+  BOOK_EXPAND_CHILD_OFFSET_X,
+  BOOK_EXPAND_CHILD_WIDTH,
+  BOOK_EXPAND_HUB_HEIGHT,
+  BOOK_EXPAND_HUB_WIDTH,
+  bookExpandBranchLaneY,
+  bookExpandClusterSize,
   spawnBookExpandBranchCard,
   spawnBookExpandHubCard,
 } from '../../services/spawnBookExpandCards';
 import type { BookVoiceCardSpawner } from '../../hooks/useBookVoiceChat';
+import { findOpenCanvasPosition } from '../../utils/canvas';
 
 function clampPageIndex(index: number, unitCount: number): number {
   if (unitCount <= 0) return 0;
@@ -89,6 +97,9 @@ export function BookNode({
   isExpanding = false,
   aiConfig,
   voiceChatDisabled,
+  canvasTransform,
+  canvasNodes,
+  onFocusCanvasRect,
 }: BookNodeProps) {
   const { t } = useTranslation();
   const book = useMemo(() => tryParseBookContent(node.content), [node.content]);
@@ -384,26 +395,49 @@ export function BookNode({
     !isExpanding;
 
   const voiceHubLayoutRef = useRef<{ hubId: string; hubX: number; hubY: number } | null>(null);
+  const canvasTransformRef = useRef(canvasTransform);
+  canvasTransformRef.current = canvasTransform;
+  const canvasNodesRef = useRef(canvasNodes);
+  canvasNodesRef.current = canvasNodes;
+  const onFocusCanvasRectRef = useRef(onFocusCanvasRect);
+  onFocusCanvasRectRef.current = onFocusCanvasRect;
 
   const voiceCardSpawner = useMemo<BookVoiceCardSpawner>(() => ({
-    spawnHub: async (hubLabel) => {
-      // Nudge each new voice concept map so successive turns don't stack on one spot.
-      const outEdges = await db.edges.where('from').equals(node.id).toArray();
-      const hubNodes = await db.nodes.bulkGet(outEdges.map((e) => e.to));
-      const priorHubs = hubNodes.filter((n) => n?.type === 'theme').length;
-      const laneNudge = priorHubs * 56;
+    spawnHub: async (hubLabel, branchCount) => {
+      const cluster = bookExpandClusterSize(branchCount);
+      const transform = canvasTransformRef.current ?? { x: 0, y: 0, scale: 1 };
+      const obstacles = (canvasNodesRef.current ?? []).filter((n) => n.id !== node.id);
+      // Reserve the full hub+lane footprint in open space beside the book.
+      const open = findOpenCanvasPosition({
+        transform,
+        obstacles: [node, ...obstacles],
+        size: cluster,
+        preferBeside: node,
+        gap: 36,
+      });
+      const hubPos = {
+        x: open.x,
+        y: open.y + Math.max(0, (cluster.height - BOOK_EXPAND_HUB_HEIGHT) / 2),
+      };
       const placed = await spawnBookExpandHubCard({
         bookNodeId: node.id,
         canvasId: node.canvasId ?? 'default',
         bookPos: {
-          x: node.x + laneNudge,
-          y: node.y + laneNudge,
+          x: node.x,
+          y: node.y,
           width: node.width,
           height: node.height,
         },
         hub: hubLabel,
+        hubPos,
       });
       voiceHubLayoutRef.current = placed;
+      onFocusCanvasRectRef.current?.({
+        x: placed.hubX,
+        y: placed.hubY,
+        width: BOOK_EXPAND_HUB_WIDTH,
+        height: BOOK_EXPAND_HUB_HEIGHT,
+      });
       return { hubId: placed.hubId };
     },
     spawnBranch: async (hubId, branch, index, branchCount) => {
@@ -418,8 +452,15 @@ export function BookNode({
         index,
         branchCount,
       });
+      const branchY = bookExpandBranchLaneY(layout.hubY, index, branchCount, BOOK_EXPAND_HUB_HEIGHT);
+      onFocusCanvasRectRef.current?.({
+        x: layout.hubX + BOOK_EXPAND_CHILD_OFFSET_X,
+        y: branchY,
+        width: BOOK_EXPAND_CHILD_WIDTH,
+        height: BOOK_EXPAND_CHILD_HEIGHT,
+      });
     },
-  }), [node.canvasId, node.height, node.id, node.width, node.x, node.y]);
+  }), [node]);
 
   const voice = useBookVoiceChat({
     aiConfig: aiConfig ?? null,

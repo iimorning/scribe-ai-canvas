@@ -166,6 +166,16 @@ export default function App() {
     activeTab === 'personal',
   );
 
+  const focusCanvasRect = useCallback(
+    (rect: { x: number; y: number; width: number; height: number }) => {
+      const scale = transformRef.current.scale || 1;
+      setCanvasTransform(
+        transformToFocusNode(rect.x, rect.y, scale, rect.width, rect.height),
+      );
+    },
+    [setCanvasTransform, transformRef],
+  );
+
   const handleCanvasPanPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       const nodeRow = editingNodeId ? dynamicNodes.find((n) => n.id === editingNodeId) : undefined;
@@ -937,6 +947,9 @@ export default function App() {
                     expandingBookNodeId={expandingBookNodeId}
                     aiConfig={aiConfig}
                     bookVoiceChatDisabled={voiceModeActive}
+                    canvasTransform={canvasTransform}
+                    canvasNodes={dynamicNodes}
+                    onFocusCanvasRect={focusCanvasRect}
                   />
                 </DraggableNode>
               );

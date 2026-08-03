@@ -55,4 +55,10 @@ export interface BookNodeProps extends NodeContentProps {
   aiConfig?: AIConfig;
   /** Disable the voice chat button (e.g. when canvas voice mode is active). */
   voiceChatDisabled?: boolean;
+  /** Live canvas transform — used to seed open-space placement for voice cards. */
+  canvasTransform?: { x: number; y: number; scale: number };
+  /** Other nodes on the canvas (obstacles for voice-card placement). */
+  canvasNodes?: CanvasNode[];
+  /** Pan the viewport to a newly spawned voice card. */
+  onFocusCanvasRect?: (rect: { x: number; y: number; width: number; height: number }) => void;
 }

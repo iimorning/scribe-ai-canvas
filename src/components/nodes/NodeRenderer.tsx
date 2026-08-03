@@ -36,6 +36,9 @@ interface NodeRendererProps {
   onToggleBookExpandBranches?: (hubId: string) => void;
   aiConfig?: AIConfig;
   bookVoiceChatDisabled?: boolean;
+  canvasTransform?: { x: number; y: number; scale: number };
+  canvasNodes?: CanvasNode[];
+  onFocusCanvasRect?: (rect: { x: number; y: number; width: number; height: number }) => void;
 }
 
 export function NodeRenderer({
@@ -62,6 +65,9 @@ export function NodeRenderer({
   onToggleBookExpandBranches,
   aiConfig,
   bookVoiceChatDisabled,
+  canvasTransform,
+  canvasNodes,
+  onFocusCanvasRect,
 }: NodeRendererProps) {
   switch (node.type) {
     case 'theme':
@@ -127,6 +133,9 @@ export function NodeRenderer({
           isExpanding={expandingBookNodeId === node.id}
           aiConfig={aiConfig}
           voiceChatDisabled={bookVoiceChatDisabled}
+          canvasTransform={canvasTransform}
+          canvasNodes={canvasNodes}
+          onFocusCanvasRect={onFocusCanvasRect}
         />
       );
     case 'agent':

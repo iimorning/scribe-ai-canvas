@@ -28,7 +28,7 @@ export type BookVoiceMessage = {
  * Progressive card sink: hub first, then one branch card as that viewpoint is spoken.
  */
 export type BookVoiceCardSpawner = {
-  spawnHub: (hubLabel: string) => Promise<{ hubId: string }>;
+  spawnHub: (hubLabel: string, branchCount: number) => Promise<{ hubId: string }>;
   spawnBranch: (
     hubId: string,
     branch: BookExpandBranch,
@@ -327,11 +327,12 @@ export function useBookVoiceChat({
       });
 
       const spawner = cardSpawnerRef.current;
+      const branches = parsed.plan.branches;
       let hubId: string | null = null;
       if (spawner) {
         try {
-          // Theme hub appears as the intro starts.
-          hubId = (await spawner.spawnHub(parsed.plan.hub)).hubId;
+          // Theme hub appears as the intro starts (open space reserved for full lane).
+          hubId = (await spawner.spawnHub(parsed.plan.hub, branches.length)).hubId;
         } catch (err) {
           console.error('[Spoor] book voice spawn hub failed', err);
         }
@@ -339,7 +340,6 @@ export function useBookVoiceChat({
 
       await speakSegment(parsed.summary);
 
-      const branches = parsed.plan.branches;
       for (let i = 0; i < branches.length; i++) {
         if (!activeRef.current) return;
         const branch = branches[i]!;
