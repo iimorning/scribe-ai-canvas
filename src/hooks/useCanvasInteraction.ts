@@ -7,6 +7,33 @@ export interface CanvasTransform {
   scale: number;
 }
 
+/**
+ * Layout (world) center of a node relative to the transformed canvas container.
+ * Uses offsetLeft/Top/Width/Height so parent CSS scale cannot inject subpixel
+ * jitter the way getBoundingClientRect → ÷ scale does during zoom.
+ */
+function getNodeLayoutBox(el: HTMLElement, container: HTMLElement) {
+  let left = 0;
+  let top = 0;
+  let cur: HTMLElement | null = el;
+  while (cur && cur !== container) {
+    left += cur.offsetLeft;
+    top += cur.offsetTop;
+    cur = cur.offsetParent as HTMLElement | null;
+  }
+  const width = el.offsetWidth;
+  const height = el.offsetHeight;
+  return {
+    left,
+    top,
+    width,
+    height,
+    centerX: left + width / 2,
+    centerY: top + height / 2,
+    right: left + width,
+  };
+}
+
 export function useCanvasInteraction(
   mainRef: RefObject<HTMLDivElement | null>,
   contentContainerRef: RefObject<HTMLDivElement | null>,
@@ -17,16 +44,23 @@ export function useCanvasInteraction(
   setConnectingFrom: (v: string | null) => void,
   canvasId: string = 'default',
 ) {
-  const [canvasTransform, setCanvasTransform] = useState<CanvasTransform>(() =>
+  const [canvasTransform, setCanvasTransformState] = useState<CanvasTransform>(() =>
     loadCanvasViewport(canvasId),
   );
   const transformRef = useRef<CanvasTransform>(canvasTransform);
   const mousePosRef = useRef({ x: 0, y: 0 });
 
-  // Sync ref with state
-  useEffect(() => {
-    transformRef.current = canvasTransform;
-  }, [canvasTransform]);
+  // Keep transformRef in lockstep with state (including inside the updater) so
+  // edge math never reads a one-frame-stale scale during zoom/pan.
+  const setCanvasTransform = (
+    update: CanvasTransform | ((prev: CanvasTransform) => CanvasTransform),
+  ) => {
+    setCanvasTransformState((prev) => {
+      const next = typeof update === 'function' ? update(prev) : update;
+      transformRef.current = next;
+      return next;
+    });
+  };
 
   // Restore per-canvas viewport when switching canvases; flush previous on change/unmount.
   useEffect(() => {
@@ -166,9 +200,6 @@ export function useCanvasInteraction(
       // Always reschedule: after HMR or strict-mode remount, refs can be null for a frame.
       // Early-return without rAF would permanently stop edge updates until a full reload.
       if (svg && container) {
-        const containerRect = container.getBoundingClientRect();
-        const currentScale = transformRef.current.scale;
-
         const edgeGroups = Array.from(svg.querySelectorAll('g[data-edge-id]')) as SVGGElement[];
 
         edgeGroups.forEach((g: SVGGElement) => {
@@ -180,13 +211,12 @@ export function useCanvasInteraction(
           const fromNode = nodesRef.current[fromId];
           const toNode = nodesRef.current[toId];
           if (fromNode && toNode) {
-            const fromRect = fromNode.getBoundingClientRect();
-            const toRect = toNode.getBoundingClientRect();
-
-            const x1 = (fromRect.left + fromRect.width / 2 - containerRect.left) / currentScale;
-            const y1 = (fromRect.top + fromRect.height / 2 - containerRect.top) / currentScale;
-            const x2 = (toRect.left + toRect.width / 2 - containerRect.left) / currentScale;
-            const y2 = (toRect.top + toRect.height / 2 - containerRect.top) / currentScale;
+            const fromBox = getNodeLayoutBox(fromNode, container);
+            const toBox = getNodeLayoutBox(toNode, container);
+            const x1 = fromBox.centerX;
+            const y1 = fromBox.centerY;
+            const x2 = toBox.centerX;
+            const y2 = toBox.centerY;
 
             g.querySelectorAll('line').forEach((line: SVGLineElement) => {
               line.setAttribute('x1', x1.toString());
@@ -209,11 +239,13 @@ export function useCanvasInteraction(
         const connFrom = svg.getAttribute('data-connecting-from');
         if (tempEdge) {
           if (connFrom && nodesRef.current[connFrom]) {
-            const fromNode = nodesRef.current[connFrom];
-            const fromRect = fromNode.getBoundingClientRect();
-
-            const x1 = (fromRect.right - containerRect.left) / currentScale;
-            const y1 = (fromRect.top + fromRect.height / 2 - containerRect.top) / currentScale;
+            const fromNode = nodesRef.current[connFrom]!;
+            const fromBox = getNodeLayoutBox(fromNode, container);
+            // Cursor is screen-space; convert once into the scaled container's world space.
+            const containerRect = container.getBoundingClientRect();
+            const currentScale = transformRef.current.scale || 1;
+            const x1 = fromBox.right;
+            const y1 = fromBox.centerY;
             const x2 = (mousePosRef.current.x - containerRect.left) / currentScale;
             const y2 = (mousePosRef.current.y - containerRect.top) / currentScale;
 
