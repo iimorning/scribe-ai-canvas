@@ -120,6 +120,8 @@ describe('ResearchLab', () => {
   it('shows empty history message when no sessions in db', () => {
     const callAI = vi.fn();
     render(<ResearchLab aiConfig={baseConfig} callAI={callAI} />);
+    // 默认折叠，先展开
+    fireEvent.click(screen.getByTestId('research-history-toggle'));
     expect(screen.getByText('No completed research yet.')).toBeTruthy();
   });
 
@@ -141,6 +143,9 @@ describe('ResearchLab', () => {
     });
 
     render(<ResearchLab aiConfig={baseConfig} callAI={callAI} />);
+
+    // 默认折叠，先展开
+    fireEvent.click(screen.getByTestId('research-history-toggle'));
 
     await waitFor(() => {
       expect(screen.getByTestId('research-session-sess-1')).toBeTruthy();
@@ -168,6 +173,9 @@ describe('ResearchLab', () => {
     });
 
     render(<ResearchLab aiConfig={baseConfig} callAI={callAI} />);
+
+    // 默认折叠，先展开
+    fireEvent.click(screen.getByTestId('research-history-toggle'));
 
     await waitFor(() => {
       expect(screen.getByTestId('research-session-delete-sess-del')).toBeTruthy();
@@ -198,6 +206,9 @@ describe('ResearchLab', () => {
     });
 
     render(<ResearchLab aiConfig={baseConfig} callAI={callAI} />);
+
+    // 默认折叠，先展开
+    fireEvent.click(screen.getByTestId('research-history-toggle'));
 
     await waitFor(() => {
       expect(screen.getByTestId('research-session-delete-sess-keep')).toBeTruthy();
@@ -324,6 +335,9 @@ describe('ResearchLab', () => {
 
     fireEvent.change(screen.getByPlaceholderText('Search topic...'), { target: { value: 'topic sources' } });
     fireEvent.submit(screen.getByPlaceholderText('Search topic...').closest('form')!);
+
+    // 非空闲阶段面板默认折叠，先展开
+    fireEvent.click(screen.getByTestId('research-history-toggle'));
 
     await waitFor(() => {
       expect(screen.getByTestId('lab-source-card-0')).toBeTruthy();

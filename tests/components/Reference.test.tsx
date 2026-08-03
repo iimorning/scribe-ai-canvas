@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { Reference } from '../../src/components/Reference';
@@ -36,7 +36,8 @@ vi.mock('remark-breaks', () => ({ default: () => null }));
 
 vi.mock('lucide-react', () => {
   const iconNames = [
-    'Library', 'Plus', 'Search', 'ChevronLeft', 'Minimize2', 'Maximize2', 'Link2', 'BookOpen', 'X', 'Trash2',
+    'Library', 'Plus', 'Search', 'Link2', 'BookOpen', 'X', 'Trash2',
+    'GripVertical', 'Pencil', 'FileText', 'Image', 'Video', 'Layers', 'Type',
   ];
   const icons: Record<string, React.FC> = {};
   for (const name of iconNames) {
@@ -90,6 +91,9 @@ describe('Reference', () => {
       <Reference articles={[articleA, articleB]} activeReferenceId="a-alpha" setActiveReferenceId={setId} />,
     );
 
+    // 档案索引默认折叠，先展开
+    await user.click(screen.getByTestId('reference-index-toggle'));
+
     expect(screen.getByTestId('reference-list-item-a-alpha')).toBeInTheDocument();
     expect(screen.getByTestId('reference-list-item-b-beta')).toBeInTheDocument();
 
@@ -108,6 +112,9 @@ describe('Reference', () => {
     await db.articles.add(articleA);
 
     renderReference(<Reference articles={[articleA]} activeReferenceId="a-alpha" setActiveReferenceId={setId} />);
+
+    // 档案索引默认折叠，先展开
+    await user.click(screen.getByTestId('reference-index-toggle'));
 
     const addBtn = screen.getByRole('button', { name: 'reference.add_article' });
     await user.click(addBtn);
@@ -221,23 +228,6 @@ describe('Reference', () => {
     expect(screen.getByText('段落正文。')).toBeInTheDocument();
   });
 
-  it('含 Markdown 标题的正文显示目录并可点击', async () => {
-    const user = userEvent.setup();
-    const withHeadings: Article = {
-      ...articleA,
-      content: '# Intro Title\n\nBody paragraph.\n\n## Section Two\n\nMore text.',
-    };
-    await db.articles.add(withHeadings);
-
-    renderReference(
-      <Reference articles={[withHeadings]} activeReferenceId="a-alpha" setActiveReferenceId={vi.fn()} />,
-    );
-
-    await user.click(screen.getByRole('button', { name: 'reference.contents' }));
-    expect(screen.getByRole('button', { name: 'Intro Title' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Section Two' })).toBeInTheDocument();
-  });
-
   it('侧栏删除按钮经确认后从 IndexedDB 移除文献', async () => {
     const user = userEvent.setup();
     await db.articles.bulkAdd([articleA, articleB]);
@@ -246,6 +236,9 @@ describe('Reference', () => {
     renderReference(
       <Reference articles={[articleA, articleB]} activeReferenceId="a-alpha" setActiveReferenceId={setId} />,
     );
+
+    // 档案索引默认折叠，先展开
+    await user.click(screen.getByTestId('reference-index-toggle'));
 
     await user.click(screen.getByTestId('reference-delete-a-alpha'));
     await user.click(screen.getByRole('button', { name: 'dialog.confirm' }));
@@ -265,6 +258,9 @@ describe('Reference', () => {
       <Reference articles={[articleA]} activeReferenceId="a-alpha" setActiveReferenceId={vi.fn()} />,
     );
 
+    // 档案索引默认折叠，先展开
+    await user.click(screen.getByTestId('reference-index-toggle'));
+
     await user.click(screen.getByTestId('reference-delete-a-alpha'));
     await user.click(screen.getByRole('button', { name: 'dialog.cancel' }));
     expect(await db.articles.count()).toBe(1);
@@ -278,5 +274,106 @@ describe('Reference', () => {
     );
 
     expect(screen.queryByRole('combobox')).toBeNull();
+  });
+
+  it('来源卡片按顺序渲染正文分段', () => {
+    const withCards: Article = {
+      ...articleA,
+      sourceCards: [
+        { nodeId: 'n1', canvasId: 'cv-1', kind: 'note', title: '第一段', segmentText: '## 段一\n\n正文一。' },
+        { nodeId: 'n2', canvasId: 'cv-1', kind: 'ai', title: '第二段', segmentText: '## 段二\n\n正文二。' },
+      ],
+    };
+    renderReference(
+      <Reference articles={[withCards]} activeReferenceId="a-alpha" setActiveReferenceId={vi.fn()} />,
+    );
+
+    expect(screen.getByText('正文一。')).toBeInTheDocument();
+    expect(screen.getByText('正文二。')).toBeInTheDocument();
+    expect(screen.getByTestId('reference-segment-0')).toBeInTheDocument();
+    expect(screen.getByTestId('reference-segment-1')).toBeInTheDocument();
+  });
+
+  it('删除来源卡片后该段从正文消失', async () => {
+    const user = userEvent.setup();
+    const withCards: Article = {
+      ...articleA,
+      sourceCards: [
+        { nodeId: 'n1', canvasId: 'cv-1', kind: 'note', title: '第一段', segmentText: '正文一。' },
+        { nodeId: 'n2', canvasId: 'cv-1', kind: 'note', title: '第二段', segmentText: '正文二。' },
+      ],
+    };
+    await db.articles.add(withCards);
+
+    renderReference(
+      <Reference articles={[withCards]} activeReferenceId="a-alpha" setActiveReferenceId={vi.fn()} />,
+    );
+
+    expect(screen.getByText('正文一。')).toBeInTheDocument();
+    await user.click(screen.getByTestId('reference-source-card-delete-0'));
+    await user.click(screen.getByRole('button', { name: 'dialog.confirm' }));
+
+    await waitFor(async () => {
+      const row = await db.articles.get('a-alpha');
+      expect(row?.sourceCards).toHaveLength(1);
+      expect(row?.sourceCards?.[0].nodeId).toBe('n2');
+    });
+  });
+
+  it('侧栏编辑卡片正文后写入 IndexedDB', async () => {
+    const user = userEvent.setup();
+    const withCards: Article = {
+      ...articleA,
+      sourceCards: [
+        { nodeId: 'n1', canvasId: 'cv-1', kind: 'note', title: '第一段', segmentText: '原始正文。' },
+      ],
+    };
+    await db.articles.add(withCards);
+
+    renderReference(
+      <Reference articles={[withCards]} activeReferenceId="a-alpha" setActiveReferenceId={vi.fn()} />,
+    );
+
+    await user.click(screen.getByTestId('reference-source-card-edit-0'));
+    const ta = screen.getByTestId('reference-source-card-textarea-0');
+    await user.clear(ta);
+    await user.type(ta, '编辑后的正文。');
+    await user.tab();
+
+    await waitFor(async () => {
+      const row = await db.articles.get('a-alpha');
+      expect(row?.sourceCards?.[0].segmentText).toBe('编辑后的正文。');
+      expect(row?.content).toBe('编辑后的正文。');
+    });
+  });
+
+  it('拖拽重排来源卡片后正文顺序变化', async () => {
+    const withCards: Article = {
+      ...articleA,
+      sourceCards: [
+        { nodeId: 'n1', canvasId: 'cv-1', kind: 'note', title: '第一段', segmentText: '正文一。' },
+        { nodeId: 'n2', canvasId: 'cv-1', kind: 'note', title: '第二段', segmentText: '正文二。' },
+      ],
+    };
+    await db.articles.add(withCards);
+
+    renderReference(
+      <Reference articles={[withCards]} activeReferenceId="a-alpha" setActiveReferenceId={vi.fn()} />,
+    );
+
+    const fromCard = screen.getByTestId('reference-source-card-0');
+    const toCard = screen.getByTestId('reference-source-card-1');
+
+    const dt = {} as DataTransfer;
+    fireEvent.dragStart(fromCard, { dataTransfer: dt });
+    fireEvent.dragOver(toCard, { dataTransfer: dt });
+    fireEvent.drop(toCard, { dataTransfer: dt });
+
+    await waitFor(async () => {
+      const row = await db.articles.get('a-alpha');
+      expect(row?.sourceCards?.[0].nodeId).toBe('n2');
+      expect(row?.sourceCards?.[1].nodeId).toBe('n1');
+      expect(row?.content).toBe('正文二。\n\n正文一。');
+    });
   });
 });

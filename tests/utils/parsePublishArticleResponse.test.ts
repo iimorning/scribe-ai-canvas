@@ -4,7 +4,24 @@ import { parsePublishArticleResponse } from '../../src/utils/parsePublishArticle
 const FALLBACK = '生成的合成稿';
 
 describe('parsePublishArticleResponse', () => {
-  it('解析 JSON 中的 title 与 body', () => {
+  it('解析 JSON 中的 title 与 segments', () => {
+    const raw = JSON.stringify({
+      title: '创业的意义是什么？',
+      segments: [
+        { cardId: 'c1', text: '## 用不确定性交换可能性\n\n正文段落。' },
+        { cardId: 'c2', text: '## 第二节\n\n另一段。' },
+      ],
+    });
+    const parsed = parsePublishArticleResponse(raw, FALLBACK);
+    expect(parsed.title).toBe('创业的意义是什么？');
+    expect(parsed.segments).toEqual([
+      { cardId: 'c1', text: '## 用不确定性交换可能性\n\n正文段落。' },
+      { cardId: 'c2', text: '## 第二节\n\n另一段。' },
+    ]);
+    expect(parsed.body).toBe('## 用不确定性交换可能性\n\n正文段落。\n\n## 第二节\n\n另一段。');
+  });
+
+  it('旧格式 {title, body} 回退为单段 segments', () => {
     const raw = JSON.stringify({
       title: '创业的意义是什么？',
       body: '## 用不确定性交换可能性\n\n正文段落。',
@@ -12,6 +29,7 @@ describe('parsePublishArticleResponse', () => {
     expect(parsePublishArticleResponse(raw, FALLBACK)).toEqual({
       title: '创业的意义是什么？',
       body: '## 用不确定性交换可能性\n\n正文段落。',
+      segments: [{ cardId: '', text: '## 用不确定性交换可能性\n\n正文段落。' }],
     });
   });
 
@@ -26,6 +44,7 @@ describe('parsePublishArticleResponse', () => {
     expect(parsePublishArticleResponse(raw, FALLBACK)).toEqual({
       title: '从 H1 拆出的标题',
       body: '## 第二节\n\n段落',
+      segments: [{ cardId: '', text: '## 第二节\n\n段落' }],
     });
   });
 
@@ -34,6 +53,7 @@ describe('parsePublishArticleResponse', () => {
     expect(parsePublishArticleResponse(raw, FALLBACK)).toEqual({
       title: FALLBACK,
       body: raw,
+      segments: [{ cardId: '', text: raw }],
     });
   });
 });

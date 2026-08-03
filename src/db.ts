@@ -58,6 +58,19 @@ export interface Canvas {
   updatedAt: number;
 }
 
+export interface SourceCardSegment {
+  /** 原画布卡片 id（回链用，可能已被删除） */
+  nodeId: string;
+  /** 来源画布 id */
+  canvasId: string;
+  /** 卡片类型，用于侧栏图标（note/text/ai/image/video/book/theme/document/agent...） */
+  kind: string;
+  /** 侧栏显示标题 */
+  title: string;
+  /** 该卡对应的正文 Markdown 段 */
+  segmentText: string;
+}
+
 export interface Article {
   id: string;
   title: string;
@@ -68,6 +81,8 @@ export interface Article {
   tags?: string[];
   privateNotes?: string;
   linkedCanvasIds?: string[];
+  /** AI 合成时按选中顺序生成的来源卡片分段；存在时正文由其拼接驱动 */
+  sourceCards?: SourceCardSegment[];
 }
 
 /** Markdown 知识：文件内容持久化在 IndexedDB，调用模型时整段注入 system（非 RAG）。 */
@@ -165,6 +180,11 @@ export class MyDatabase extends Dexie {
 
     this.version(4).stores({
       agentSandboxThreads: 'agentId',
+    });
+
+    this.version(5).stores({
+      // sourceCards 为嵌套数组，无需索引；升级仅容纳 Article 新字段
+      articles: '++id, type, date',
     });
   }
 }

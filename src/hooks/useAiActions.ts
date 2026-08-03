@@ -1,6 +1,6 @@
 import { useRef, useState, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { AgentConfig, CanvasNode, Edge as DbEdge } from '../db';
+import type { AgentConfig, CanvasNode, Edge as DbEdge, SourceCardSegment } from '../db';
 import type { AIConfig } from '../components/AISettingsModal';
 import type { CanvasTransform } from './useCanvasInteraction';
 import { callUniversalAI, formatAiError, maskApiKeyForLog } from '../services/ai';
@@ -109,13 +109,15 @@ export function useAiActions({
     setIsPublishing(true);
     try {
       const selectedIds = Array.from(selectedNodes);
-      const { promptContent, mediaAssets } = buildPublishSourceMaterial(
+      const { promptContent, mediaAssets, cards } = buildPublishSourceMaterial(
         selectedIds,
         dynamicNodes,
         (nodeId) => {
           const el = nodesRef.current[nodeId];
           return el ? getCanvasNodeContextText(el) : '';
         },
+        (kind) => t(`canvas.search_type_${kind}`, { defaultValue: kind }),
+        activeCanvasId,
       );
 
       const text = await callUniversalAI({
@@ -125,11 +127,69 @@ export function useAiActions({
       });
 
       const parsed = parsePublishArticleResponse(text || '', t('ai.generated_article_title'));
-      const body = ensurePublishMediaInBody(
-        parsed.body,
-        mediaAssets,
-        t('ai.publish_related_media'),
-      );
+
+      // 按 cards 顺序对齐 segments：以 cards 为准，匹配 cardId；缺失段补空；多余段忽略
+      const segByCardId = new Map<string, string>();
+      for (const seg of parsed.segments) {
+        if (seg.cardId) segByCardId.set(seg.cardId, seg.text);
+      }
+      let sourceCards: SourceCardSegment[] | undefined;
+      if (segByCardId.size > 0) {
+        sourceCards = cards.map((c) => ({
+          nodeId: c.nodeId,
+          canvasId: c.canvasId,
+          kind: c.kind,
+          title: c.title,
+          segmentText: segByCardId.get(c.nodeId) ?? '',
+        }));
+      }
+      // 若模型未返回带 cardId 的结构化分段（旧格式回退），则不构建 sourceCards，
+      // 走旧文章路径：侧栏显示画布名，正文直接用 content。
+
+      // 媒体兜底：把模型遗漏的媒体追加到对应卡片段（按 nodeId 匹配），否则追加到末尾段
+      const missingMedia = mediaAssets.filter((asset) => {
+        const md = asset.articleMarkdown;
+        const urls = [...md.matchAll(/\(([^)\s]+)\)/g)].map((m) => m[1]!);
+        if (urls.length === 0) {
+          const title = md.replace(/[*\[\]]/g, '').trim();
+          return title.length > 0 && !parsed.body.includes(title);
+        }
+        return urls.some((u) => u && !parsed.body.includes(u));
+      });
+
+      let body = parsed.body;
+      if (sourceCards && missingMedia.length > 0) {
+        const relatedHeading = t('ai.publish_related_media');
+        const heading = relatedHeading.replace(/\s+/g, ' ').trim() || 'Related media';
+        // 追加到拥有该媒体卡片的段；找不到则追加到末尾段
+        for (const asset of missingMedia) {
+          const idx = sourceCards.findIndex((sc) => sc.nodeId === asset.nodeId);
+          const attach = `\n\n## ${heading}\n\n${asset.articleMarkdown}`;
+          if (idx >= 0) {
+            sourceCards[idx] = {
+              ...sourceCards[idx],
+              segmentText: `${sourceCards[idx].segmentText}${attach}`.trim(),
+            };
+          } else {
+            const last = sourceCards.length - 1;
+            sourceCards[last] = {
+              ...sourceCards[last],
+              segmentText: `${sourceCards[last].segmentText}${attach}`.trim(),
+            };
+          }
+        }
+        body = sourceCards.map((s) => s.segmentText).join('\n\n');
+      } else {
+        body = ensurePublishMediaInBody(
+          parsed.body,
+          mediaAssets,
+          t('ai.publish_related_media'),
+        );
+        // 若结构化分段存在但媒体兜底未触发，仍以分段拼接为准（保证正文与卡片一致）
+        if (sourceCards) {
+          body = sourceCards.map((s) => s.segmentText).join('\n\n');
+        }
+      }
 
       const newArticle = {
         id: `gen-${Date.now()}`,
@@ -140,6 +200,7 @@ export function useAiActions({
         tags: [] as string[],
         linkedCanvasIds: [activeCanvasId],
         author: '',
+        ...(sourceCards ? { sourceCards } : {}),
       };
 
       await db.articles.add(newArticle);

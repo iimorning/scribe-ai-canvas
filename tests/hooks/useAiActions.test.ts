@@ -147,6 +147,50 @@ describe('useAiActions', () => {
       expect(rows[0].linkedCanvasIds).toEqual(['default']);
       expect(rows[0].author).toBe('');
       expect(rows[0].type).toMatch(/^GEN-/);
+      // 旧格式 {title, body} 回退：不构建 sourceCards，正文直接用 body
+      expect(rows[0].sourceCards).toBeUndefined();
+    });
+
+    it('结构化 segments 输出时构建 sourceCards 且正文按段拼接', async () => {
+      const { result } = renderHook(() => useTestAiActions());
+
+      act(() => {
+        result.current.setSelectedNodes(new Set(['n1', 'n2']));
+        const el1 = document.createElement('div');
+        el1.innerText = '卡片一内容';
+        const el2 = document.createElement('div');
+        el2.innerText = '卡片二内容';
+        result.current.nodesRef.current.n1 = el1;
+        result.current.nodesRef.current.n2 = el2;
+      });
+
+      vi.mocked(callUniversalAI).mockResolvedValueOnce(
+        JSON.stringify({
+          title: '结构化标题',
+          segments: [
+            { cardId: 'n1', text: '## 段一\n\n第一段正文。' },
+            { cardId: 'n2', text: '## 段二\n\n第二段正文。' },
+          ],
+        }),
+      );
+
+      await act(async () => {
+        await result.current.handlePublish();
+      });
+
+      const rows = await db.articles.toArray();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].sourceCards).toHaveLength(2);
+      expect(rows[0].sourceCards![0]).toMatchObject({
+        nodeId: 'n1',
+        canvasId: 'default',
+        segmentText: '## 段一\n\n第一段正文。',
+      });
+      expect(rows[0].sourceCards![1]).toMatchObject({
+        nodeId: 'n2',
+        segmentText: '## 段二\n\n第二段正文。',
+      });
+      expect(rows[0].content).toBe('## 段一\n\n第一段正文。\n\n## 段二\n\n第二段正文。');
     });
   });
 

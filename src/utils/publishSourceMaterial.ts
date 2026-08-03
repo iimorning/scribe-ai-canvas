@@ -11,6 +11,15 @@ export interface PublishMediaAsset {
   promptMarkdown: string;
 }
 
+export interface PublishSourceCardMeta {
+  nodeId: string;
+  canvasId: string;
+  /** 卡片类型，用于侧栏图标 */
+  kind: string;
+  /** 侧栏显示标题 */
+  title: string;
+}
+
 function asHttpUrl(raw: string | undefined): string {
   const s = (raw || '').trim();
   return /^https?:\/\//i.test(s) ? s : '';
@@ -18,6 +27,15 @@ function asHttpUrl(raw: string | undefined): string {
 
 function escapeMdAlt(s: string): string {
   return s.replace(/[\[\]]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/** 取卡片内容前若干字符作为侧栏标题；为空时回退到 description / 类型名 */
+function deriveCardTitle(node: CanvasNode, fallback: string): string {
+  const fromContent = (node.content || '').replace(/\s+/g, ' ').trim();
+  if (fromContent) return fromContent.slice(0, 40);
+  const fromDesc = (node.description || '').replace(/\s+/g, ' ').trim();
+  if (fromDesc) return fromDesc.slice(0, 40);
+  return fallback;
 }
 
 /** Build markdown for a selected image/video node to embed in a long-form article. */
@@ -65,45 +83,66 @@ export interface PublishSourceMaterial {
   promptContent: string;
   /** Canonical media markdown to guarantee in the final article */
   mediaAssets: PublishMediaAsset[];
+  /** 选中卡片元数据，按选中顺序（用于回填 sourceCards） */
+  cards: PublishSourceCardMeta[];
 }
 
 /**
  * Assemble publish source material from selected canvas nodes.
  * Text/note/theme/ai → DOM or node text; image/video → markdown media blocks.
+ * 每段素材以 `【cardId:xxx】` 标注，便于模型回填 segments。
  */
 export function buildPublishSourceMaterial(
   selectedIds: string[],
   nodes: CanvasNode[],
   getText: (nodeId: string) => string,
+  /** 用于把卡片类型翻译成侧栏标题回退值 */
+  typeLabel?: (kind: string) => string,
+  /** 来源画布 id（所有选中卡通常同属一画布） */
+  canvasId?: string,
 ): PublishSourceMaterial {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const textParts: string[] = [];
   const mediaAssets: PublishMediaAsset[] = [];
+  const cards: PublishSourceCardMeta[] = [];
 
   for (const id of selectedIds) {
     const node = byId.get(id);
+    const kind = node?.type ?? 'card';
+    const fallbackTitle = typeLabel ? typeLabel(kind) : kind;
+    const cardCanvasId = node?.canvasId ?? canvasId ?? '';
+    cards.push({
+      nodeId: id,
+      canvasId: cardCanvasId,
+      kind,
+      title: node ? deriveCardTitle(node, fallbackTitle) : fallbackTitle,
+    });
+
     if (!node) {
       const t = getText(id).trim();
-      if (t) textParts.push(t);
+      if (t) textParts.push(`【cardId:${id}】\n${t}`);
       continue;
     }
 
     const media = mediaMarkdownFromNode(node);
     if (media) {
       mediaAssets.push(media);
-      textParts.push(`Media asset (include this markdown in the article body):\n${media.promptMarkdown}`);
+      textParts.push(
+        `【cardId:${id}】\nMedia asset (include this markdown in this card's segment):\n${media.promptMarkdown}`,
+      );
       continue;
     }
 
     const fromDom = getText(id).trim();
     const fromNode = (node.content || '').trim();
     const chunk = fromDom || fromNode;
-    if (chunk) textParts.push(chunk);
+    if (chunk) textParts.push(`【cardId:${id}】\n${chunk}`);
   }
 
   return {
     promptContent: textParts.join('\n\n'),
     mediaAssets,
+    cards,
   };
 }
 

@@ -27,6 +27,7 @@ import {
   ExternalLink,
   Trash2,
   X,
+  History,
 } from 'lucide-react';
 import type { CallAIFn } from '../types';
 import { useAppDialog } from './AppDialogProvider';
@@ -198,6 +199,8 @@ export function ResearchLab({ aiConfig, callAI }: ResearchLabProps) {
   const executeResearchInFlightRef = useRef(false);
   /** When Metaso key is set: classifier result for current session (whether to call web search). */
   const labNeedWebRef = useRef(true);
+  /** 历史会话/来源面板默认折叠，点击左上角按钮展开 */
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const pastSessions = useLiveQuery(
     () => db.researchSessions.orderBy('createdAt').reverse().limit(RESEARCH_HISTORY_LIMIT).toArray(),
@@ -503,8 +506,23 @@ export function ResearchLab({ aiConfig, callAI }: ResearchLabProps) {
 
   return (
     <div className="flex-1 flex min-h-0 bg-[#FAF9F6] paper-texture text-[#1a1a1a] overflow-hidden">
-      {/* Side Panel: History & Status */}
+      {/* Side Panel: History & Status（默认折叠，点击左上角按钮展开） */}
+      {historyOpen && (
       <div className="w-64 border-r border-[#E6E4DF] flex flex-col bg-[#F4F1ED]/50 z-10 shrink-0">
+        <div className="flex items-center justify-between px-4 h-12 border-b border-[#E6E4DF] shrink-0">
+          <h3 className="font-sans text-xs font-bold text-[#8c8a84] uppercase tracking-wider">
+            {phase === 'idle' ? t('lab.past_sessions') : t('lab.sources_utilized')}
+          </h3>
+          <button
+            type="button"
+            onClick={() => setHistoryOpen(false)}
+            aria-label={t('settings.close')}
+            title={t('settings.close')}
+            className="rounded p-1 text-[#8c8a84] hover:bg-[#EAE7E2] hover:text-[#1a1a1a] transition-colors"
+          >
+            <X className="w-4 h-4" aria-hidden />
+          </button>
+        </div>
         <div className="flex-1 overflow-y-auto p-4">
            {phase === 'idle' ? (
              <>
@@ -637,9 +655,24 @@ export function ResearchLab({ aiConfig, callAI }: ResearchLabProps) {
            )}
         </div>
       </div>
+      )}
 
       {/* Main Workspace */}
       <div className="flex-1 relative overflow-hidden flex flex-col">
+        {/* 折叠时的左上角切换按钮 */}
+        {!historyOpen && (
+          <button
+            type="button"
+            onClick={() => setHistoryOpen(true)}
+            data-testid="research-history-toggle"
+            className="absolute top-4 left-4 z-20 inline-flex items-center gap-2 rounded-lg border border-[#E6E4DF] bg-white/90 px-3 py-2 text-xs font-sans font-bold text-[#5a5a54] shadow-sm backdrop-blur hover:bg-white hover:border-[#C2410C]/45 hover:text-[#1a1a1a] transition-colors"
+            title={phase === 'idle' ? t('lab.past_sessions') : t('lab.sources_utilized')}
+            aria-label={phase === 'idle' ? t('lab.past_sessions') : t('lab.sources_utilized')}
+          >
+            <History className="w-4 h-4 text-[#C2410C]" aria-hidden />
+            {phase === 'idle' ? t('lab.past_sessions') : t('lab.sources_utilized')}
+          </button>
+        )}
          {phase === 'idle' && (
            <div className="flex-1 flex flex-col items-center justify-center p-8 max-w-3xl mx-auto w-full">
                <div className="w-16 h-16 bg-white border border-[#E6E4DF] shadow-sm rounded-2xl flex items-center justify-center mb-8">

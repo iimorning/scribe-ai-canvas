@@ -165,6 +165,7 @@ vi.mock('lucide-react', () => {
     'ChevronRight', 'Check', 'Cpu', 'ArrowRight', 'ListChecks', 'CheckCircle2',
     'Loader2', 'PenLine', 'Edit3', 'FileText', 'Globe', 'ExternalLink', 'RotateCcw',
     'Monitor', 'Download', 'Mic', 'MicOff', 'Layers2',
+    'GripVertical', 'Pencil', 'Video', 'Layers', 'Type',
   ];
   const icons: Record<string, React.FC> = {};
   for (const name of iconNames) {
@@ -677,6 +678,8 @@ describe('App 组件', () => {
     it('参考区显示文章类型和日期', async () => {
       const user = userEvent.setup();
       await goToReference(user);
+      // 档案索引默认折叠，先展开以查看列表中的类型与日期
+      await user.click(screen.getByText('档案索引'));
       // REF-042 和 1994 可能出现在列表和内容区
       const refMatches = screen.getAllByText('REF-042');
       expect(refMatches.length).toBeGreaterThanOrEqual(1);
@@ -687,6 +690,8 @@ describe('App 组件', () => {
     it('参考区有搜索框', async () => {
       const user = userEvent.setup();
       await goToReference(user);
+      // 档案索引默认折叠，先点击左上角按钮展开
+      await user.click(screen.getByText('档案索引'));
       const searchInput = document.querySelector('input[placeholder="搜索参考文献..."]');
       expect(searchInput).toBeInTheDocument();
     });
@@ -697,22 +702,22 @@ describe('App 组件', () => {
       expect(screen.getByText('引用文献')).toBeInTheDocument();
     });
 
-    it('参考区显示元数据和笔记区域', async () => {
+    it('参考区显示来源画布区域（替代原元数据与笔记）', async () => {
       const user = userEvent.setup();
       await goToReference(user);
-      expect(screen.getByText('元数据与笔记')).toBeInTheDocument();
+      expect(screen.getByText('关联画布')).toBeInTheDocument();
     });
 
-    it('参考区显示标签区域', async () => {
+    it('参考区不再显示标签区域', async () => {
       const user = userEvent.setup();
       await goToReference(user);
-      expect(screen.getByText('标签')).toBeInTheDocument();
+      expect(screen.queryByText('标签')).toBeNull();
     });
 
-    it('参考区显示私密笔记区域', async () => {
+    it('参考区不再显示私密笔记区域', async () => {
       const user = userEvent.setup();
       await goToReference(user);
-      expect(screen.getByText('私密笔记')).toBeInTheDocument();
+      expect(screen.queryByText('私密笔记')).toBeNull();
     });
   });
 
@@ -860,6 +865,8 @@ describe('App 组件', () => {
     it('idle 无历史记录时显示空态文案', async () => {
       const user = userEvent.setup();
       await goToLab(user);
+      // 历史会话面板默认折叠，先点击左上角按钮展开
+      await user.click(screen.getByText('历史会话'));
       expect(screen.getByText('暂无已完成的研究。完成一次研究后会显示在这里。')).toBeInTheDocument();
     });
 
