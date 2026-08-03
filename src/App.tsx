@@ -572,21 +572,29 @@ export default function App() {
     finalPos: { x: number; y: number },
     delta: { dx: number; dy: number } = { dx: 0, dy: 0 },
   ) => {
-    setGroupDragOffset(null);
-
     const selected = selectedNodesRef.current;
     if (selected.size > 1 && selected.has(draggedId)) {
       const nodesSnapshot = dynamicNodesRef.current;
+      // Defer clearing the group offset until after the transaction commits —
+      // otherwise peers visually snap back to (x,y) (without dx/dy), then jump
+      // forward to (x+dx, y+dy) once the DB write lands, producing a 1-frame
+      // jank. Recompute each peer's final position up-front so we can release
+      // the offset the instant the user releases the mouse.
+      const updates: { id: string; x: number; y: number }[] = [];
+      for (const id of selected) {
+        if (id === draggedId) {
+          updates.push({ id, x: finalPos.x, y: finalPos.y });
+          continue;
+        }
+        const peer = nodesSnapshot.find((n) => n.id === id);
+        if (!peer) continue;
+        updates.push({ id, x: peer.x + delta.dx, y: peer.y + delta.dy });
+      }
+      setGroupDragOffset(null);
       void (async () => {
         await db.transaction('rw', db.nodes, async () => {
-          for (const id of selected) {
-            if (id === draggedId) {
-              await db.nodes.update(id, { x: finalPos.x, y: finalPos.y });
-              continue;
-            }
-            const peer = nodesSnapshot.find((n) => n.id === id);
-            if (!peer) continue;
-            await db.nodes.update(id, { x: peer.x + delta.dx, y: peer.y + delta.dy });
+          for (const u of updates) {
+            await db.nodes.update(u.id, { x: u.x, y: u.y });
           }
         });
       })();
