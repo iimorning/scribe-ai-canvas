@@ -24,6 +24,12 @@ import {
   spawnBookExpandBranchCard,
   spawnBookExpandHubCard,
 } from '../../services/spawnBookExpandCards';
+import {
+  FLUX_IMAGE_CARD_HEIGHT,
+  FLUX_IMAGE_CARD_WIDTH,
+  fluxImageCardPos,
+  spawnFluxImageCard,
+} from '../../services/spawnFluxImageCards';
 import type { BookVoiceCardSpawner } from '../../hooks/useBookVoiceChat';
 import { findOpenCanvasPosition } from '../../utils/canvas';
 
@@ -458,6 +464,29 @@ export function BookNode({
         y: branchY,
         width: BOOK_EXPAND_CHILD_WIDTH,
         height: BOOK_EXPAND_CHILD_HEIGHT,
+      });
+    },
+    spawnImage: async (hubId, image, index, total) => {
+      const layout = voiceHubLayoutRef.current;
+      if (!layout || layout.hubId !== hubId) return;
+      const pos = fluxImageCardPos(
+        { x: layout.hubX, y: layout.hubY },
+        index,
+        total,
+      );
+      await spawnFluxImageCard({
+        canvasId: node.canvasId ?? 'default',
+        imageUrl: image.imageUrl,
+        description: image.title,
+        x: pos.x,
+        y: pos.y,
+        linkFromId: hubId,
+      });
+      onFocusCanvasRectRef.current?.({
+        x: pos.x,
+        y: pos.y,
+        width: FLUX_IMAGE_CARD_WIDTH,
+        height: FLUX_IMAGE_CARD_HEIGHT,
       });
     },
   }), [node]);

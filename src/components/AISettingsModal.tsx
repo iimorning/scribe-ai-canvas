@@ -28,6 +28,8 @@ export interface AIConfig {
   /** 可选：Thinking 变体需套用带思考块的模板时设为 true */
   localEnableThinking?: boolean;
   metasoApiKey?: string;
+  /** 302.AI API Key — Flux-2-Klein-4b 文生图（书页语音 / 对话语音配图） */
+  api302Key?: string;
   /** 火山 ASR：新版控制台 API Key（优先） */
   volcAsrApiKey?: string;
   /** 火山 ASR：旧版 APP ID */
@@ -292,6 +294,21 @@ export function AISettingsModal({ isOpen, onClose, config, setConfig }: AISettin
               onChange={e => setConfig({ ...config, metasoApiKey: e.target.value })}
             />
             <p className="text-[10px] text-[#8c8a84] leading-relaxed">{t('settings.metaso_key_hint')}</p>
+          </div>
+
+          <div className="h-px bg-[#F4F1ED]" />
+
+          {/* 302.AI Flux image generation (optional) */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-mono font-bold text-[#8c8a84] uppercase tracking-wider">{t('settings.api302_key')}</label>
+            <input
+              type="password"
+              className="w-full h-10 px-3 bg-[#FAF9F6] border border-[#E6E4DF] rounded-lg text-sm outline-none focus:border-[#C2410C] focus:ring-1 focus:ring-[#C2410C] transition-all"
+              placeholder="sk-..."
+              value={config.api302Key ?? ''}
+              onChange={e => setConfig({ ...config, api302Key: e.target.value })}
+            />
+            <p className="text-[10px] text-[#8c8a84] leading-relaxed">{t('settings.api302_key_hint')}</p>
           </div>
 
           <div className="h-px bg-[#F4F1ED]" />

@@ -15,6 +15,8 @@ const METASO_PROXY_TARGET = 'https://metaso.cn';
 const DOUBAO_PROXY_TARGET = 'https://ark.cn-beijing.volces.com/api/v3';
 /** MiniMax OpenAPI (China) */
 const MINIMAX_PROXY_TARGET = 'https://api.minimaxi.com';
+/** 302.AI China (Flux-2-Klein-4b, etc.) — CN host is more reachable domestically */
+const API302_PROXY_TARGET = 'https://api.302ai.cn';
 
 const apiProxy = {
   '/api/mimo': {
@@ -41,6 +43,11 @@ const apiProxy = {
     target: MINIMAX_PROXY_TARGET,
     changeOrigin: true,
     rewrite: (p: string) => p.replace(/^\/api\/minimax/, ''),
+  },
+  '/api/302': {
+    target: API302_PROXY_TARGET,
+    changeOrigin: true,
+    rewrite: (p: string) => p.replace(/^\/api\/302/, ''),
   },
 };
 

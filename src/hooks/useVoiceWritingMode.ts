@@ -11,6 +11,13 @@ import { db } from '../db';
 import { callUniversalAI, formatAiError } from '../services/ai';
 import { startMicCapture, type MicCapture } from '../services/micCapture';
 import { buildSearchContext, metasoSearch } from '../services/search';
+import { generateFluxDevImage, hasFlux302Credentials } from '../services/flux302';
+import {
+  FLUX_IMAGE_CARD_HEIGHT,
+  FLUX_IMAGE_CARD_WIDTH,
+  fluxImageBesideAnchorPos,
+  spawnFluxImageCard,
+} from '../services/spawnFluxImageCards';
 import {
   spawnWebSearchCardsFromImages,
   spawnWebSearchCardsFromMedia,
@@ -21,6 +28,7 @@ import { getCanvasCenterPosition } from '../utils/canvas';
 import { runCanvasStreamingAiCall } from '../utils/canvasStreamingAi';
 import { combineSystemParts, getLocaleDirective } from '../utils/aiI18n';
 import { createTtsSentenceQueue } from '../utils/ttsSentenceQueue';
+import { parseVoiceDrawIntent } from '../utils/voiceDrawIntent';
 import { voiceAiPosition, voiceUserPosition, transformToFocusNode } from '../utils/voiceNoteLayout';
 import { parseVoiceWebSearchIntent } from '../utils/webSearchCommand';
 import type { CanvasTransform } from './useCanvasInteraction';
@@ -416,6 +424,56 @@ export function useVoiceWritingMode({
               console.error('[Spoor] voice web search failed', msg);
               void appAlert({ message: `${t('nodes.search_failed')}\n\n${msg}` });
               aiPrompt = `用户联网搜索“${query}”时失败。请简洁告知用户搜索暂时不可用，并建议稍后重试。`;
+            }
+          }
+        } else {
+          const drawIntent = parseVoiceDrawIntent(userText);
+          if (drawIntent) {
+            const fluxKey = (aiConfig.api302Key || '').trim();
+            const drawPrompt = drawIntent.prompt.trim() || userText.trim();
+            if (!hasFlux302Credentials(fluxKey)) {
+              void appAlert({ message: t('voice.flux_need_key') });
+              aiPrompt =
+                '用户想生成配图，但尚未配置 302.AI API Key。请简洁说明这一点，并请用户在设置中填写后重试。';
+            } else if (!drawPrompt) {
+              aiPrompt = '用户想生成配图，但没有说明画什么。请简洁请用户补充想画的内容。';
+            } else {
+              // Generate beside the AI card without blocking TTS of the spoken reply.
+              void (async () => {
+                try {
+                  const { url } = await generateFluxDevImage({
+                    apiKey: fluxKey,
+                    prompt: drawPrompt,
+                  });
+                  if (!activeRef.current) return;
+                  const pos = fluxImageBesideAnchorPos(aiPos, 0);
+                  await spawnFluxImageCard({
+                    canvasId: activeCanvasId,
+                    imageUrl: url,
+                    description: drawPrompt.slice(0, 80),
+                    x: pos.x,
+                    y: pos.y,
+                    linkFromId: aiNodeId,
+                  });
+                  setCanvasTransform(
+                    transformToFocusNode(
+                      pos.x,
+                      pos.y,
+                      transformRef.current.scale || 1,
+                      FLUX_IMAGE_CARD_WIDTH,
+                      FLUX_IMAGE_CARD_HEIGHT,
+                    ),
+                  );
+                } catch (e) {
+                  const msg = formatAiError(e);
+                  console.error('[Spoor] voice flux image failed', msg);
+                  void appAlert({ message: t('voice.flux_error', { message: msg }) });
+                }
+              })();
+              aiPrompt = [
+                `用户请求用 AI 画一张图，主题是：${drawPrompt}`,
+                '系统已在后台生成插画并放到画布上。请用一两句口语确认你理解的画面，不要输出 JSON 或工具标记。',
+              ].join('\n');
             }
           }
         }

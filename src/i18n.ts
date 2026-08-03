@@ -111,7 +111,9 @@ const resources = {
         "book_chat_start": "Chat about this page",
         "book_chat_stop": "Stop voice chat",
         "book_chat_title": "Voice chat",
-        "book_voice_parse_failed": "I couldn't turn that into cards — try asking again."
+        "book_voice_parse_failed": "I couldn't turn that into cards — try asking again.",
+        "flux_need_key": "Add a 302.AI API key in Settings to generate Flux illustrations.",
+        "flux_error": "Image generation failed: {{message}}"
       },
       "nodes": {
         "theme": "Core Theme",
@@ -210,6 +212,8 @@ const resources = {
         "model": "Model",
         "metaso_key": "Metaso Search API Key",
         "metaso_key_hint": "Optional: enables real-time web search in Research Lab for richer, sourced reports.",
+        "api302_key": "302.AI API Key (Flux-2-Klein)",
+        "api302_key_hint": "Optional: enables Flux-2-Klein-4b illustrations in book voice chat and canvas voice mode (say “画一张…”). ~0.014 PTC for the first megapixel. Get a key at 302.ai.",
         "voice_section": "Voice writing",
         "voice_section_hint": "Required for the mic toggle on the canvas. Uses Volcengine streaming ASR and MiniMax TTS. Works in local npm run dev / desktop; static Netlify hosting cannot proxy the ASR WebSocket.",
         "volc_asr_api_key": "Volc ASR API Key (new console)",
@@ -328,8 +332,8 @@ const resources = {
           "agentThreadContextMissing": "(Original source note is unavailable or was removed — continue using the dialogue below.)",
           "agentThreadFollowUp": "You are continuing an agent-persona thread on the canvas.\n\n## Original material (same as the first analysis)\n\n---\n{{initialContext}}\n---\n\n## Dialogue so far (oldest to newest)\n\n{{dialogueHistory}}\n\n## User’s new message\n\n{{request}}\n\nReply as a direct continuation: stay aligned with the agent’s role, keep depth consistent, and tie back to the original material when relevant.",
           "voiceWritingPersona": "You are a calm voice writing partner. The user is speaking thoughts aloud. Reply in concise spoken-friendly prose (short paragraphs, no markdown tables or heavy lists). Help them clarify, deepen, and continue thinking. Match their language. Do not mention canvases, notes, cards, or product UI unless they ask. Never emit tool_call markup, function-call JSON, XML tool tags, or special tokens such as ]<]minimax[> — answer in plain natural language only.",
-          "bookVoicePersona": "You are a thoughtful reading companion chatting by voice with the user about the book page they are currently reading. You can see the page content provided below.\n\nAlways reply with ONLY valid JSON (no markdown fences, no commentary):\n{\"summary\":\"Short spoken intro in the user's language (1–2 sentences, under ~40 words)\",\"hub\":\"A short central theme for the viewpoint cards (under 20 words)\",\"branches\":[{\"title\":\"Viewpoint label\",\"content\":\"1–2 spoken sentences for this viewpoint\"}]}\n\nRules:\n- Speech is paced: first `summary` is read aloud, then each branch is read aloud in order as its card appears.\n- `summary` is only a brief overall answer / framing — do not pack every viewpoint into it.\n- `hub` + `branches` (3–6): each branch is a distinct viewpoint; `content` must be natural spoken prose (no markdown, no lists).\n- Stay faithful to the page; do not invent facts not implied by it.\n- Match the user's language. Reference the page naturally; do not dump it back.\n- Never emit tool_call markup, function-call JSON outside this schema, XML tool tags, or special tokens such as ]<]minimax[>.",
-          "bookVoiceUser": "## Book & page\n{{source}}\n\n## Current page content\n---\n{{pageText}}\n---\n\n## Dialogue so far\n{{history}}\n\n## User's new message\n{{request}}\n\nReply with the JSON specified in your instructions (short intro + viewpoint cards)."
+          "bookVoicePersona": "You are a thoughtful reading companion chatting by voice with the user about the book page they are currently reading. You can see the page content provided below.\n\nAlways reply with ONLY valid JSON (no markdown fences, no commentary):\n{\"summary\":\"Short spoken intro in the user's language (1–2 sentences, under ~40 words)\",\"hub\":\"A short central theme for the viewpoint cards (under 20 words)\",\"branches\":[{\"title\":\"Viewpoint label\",\"content\":\"1–2 spoken sentences for this viewpoint\"}],\"images\":[{\"title\":\"Short label\",\"prompt\":\"Concrete visual prompt for an illustration\"}]}\n\nRules:\n- Speech is paced: first `summary` is read aloud, then each branch is read aloud in order as its card appears.\n- `summary` is only a brief overall answer / framing — do not pack every viewpoint into it.\n- `hub` + `branches` (3–6): each branch is a distinct viewpoint; `content` must be natural spoken prose (no markdown, no lists).\n- Optional `images` (0–2): only when a diagram/scene would clarify the answer; `prompt` must be a concrete visual description (objects, setting, style), not abstract slogans.\n- Stay faithful to the page; do not invent facts not implied by it.\n- Match the user's language. Reference the page naturally; do not dump it back.\n- Never emit tool_call markup, function-call JSON outside this schema, XML tool tags, or special tokens such as ]<]minimax[>.",
+          "bookVoiceUser": "## Book & page\n{{source}}\n\n## Current page content\n---\n{{pageText}}\n---\n\n## Dialogue so far\n{{history}}\n\n## User's new message\n{{request}}\n\nReply with the JSON specified in your instructions (short intro + viewpoint cards + optional images)."
         }
       },
       "lab": {
@@ -579,7 +583,9 @@ const resources = {
         "book_chat_start": "就本页与 AI 语音讨论",
         "book_chat_stop": "停止语音讨论",
         "book_chat_title": "语音讨论",
-        "book_voice_parse_failed": "这轮没能整理成卡片，再说一次试试。"
+        "book_voice_parse_failed": "这轮没能整理成卡片，再说一次试试。",
+        "flux_need_key": "请先在设置中填写 302.AI API Key，才能用 Flux 生成配图。",
+        "flux_error": "配图生成失败：{{message}}"
       },
       "nodes": {
         "theme": "核心主题",
@@ -678,6 +684,8 @@ const resources = {
         "model": "模型",
         "metaso_key": "秘塔搜索 API Key",
         "metaso_key_hint": "可选：配置后研究实验室将启用联网搜索，生成更丰富的引用报告。",
+        "api302_key": "302.AI API Key（Flux-2-Klein）",
+        "api302_key_hint": "可选：配置后书页语音讨论与画布对话语音可生成 Flux-2-Klein-4b 插图（说「画一张…」）。约首个百万像素 0.014 PTC。密钥在 302.ai 注册获取。",
         "voice_section": "语音写作",
         "voice_section_hint": "画布麦克风开关需要这些配置：火山流式语音识别 + MiniMax 语音合成。完整能力需本地 npm run dev 或桌面端；纯静态 Netlify 托管无法代理 ASR WebSocket。",
         "volc_asr_api_key": "火山 ASR API Key（新版控制台）",
@@ -796,8 +804,8 @@ const resources = {
           "agentThreadContextMissing": "（首轮分析的原始便签不可用或已删除，请仅依据下列对话与当前追问作答。）",
           "agentThreadFollowUp": "你正在延续画布上某一 Agent 人格的对话线程。\n\n## 原始材料（与首次分析时相同的那份正文）\n\n---\n{{initialContext}}\n---\n\n## 已发生的对话（从旧到新）\n\n{{dialogueHistory}}\n\n## 用户本条消息\n\n{{request}}\n\n请直接接着谈：保持该 Agent 人设与深度；需要时请回扣原始材料。",
           "voiceWritingPersona": "你是冷静的语音写作搭档。用户正在口述想法。请用适合朗读的简洁散文回复（短段落，避免表格与过重列表）。帮助对方澄清、深入并继续思考。与用户使用同一语言。除非用户问起，否则不要提及画布、便签、卡片或产品界面。禁止输出 tool_call、函数调用 JSON、XML 工具标签，或 ]<]minimax[> 之类特殊标记——只用自然语言回答。",
-          "bookVoicePersona": "你是一位体贴的阅读搭档，正通过语音与用户讨论其正在阅读的书籍页面。你能看到下方提供的页面内容。\n\n始终只输出合法 JSON（不要 Markdown 代码块、不要说明）：\n{\"summary\":\"用用户语言写的简短开场（1–2 句，约 40 字以内）\",\"hub\":\"本轮观点卡片的中心主题（不超过 20 字）\",\"branches\":[{\"title\":\"观点标题\",\"content\":\"该观点的 1–2 句口语展开\"}]}\n\n规则：\n- 朗读是分段的：先读 `summary`，再按顺序读每个 branch（读到哪段，对应卡片才出现）。\n- `summary` 只做总体回应/定调，不要把所有观点塞进摘要。\n- `hub` + `branches`（3–6 个）：每个 branch 是一个独立观点；`content` 必须是自然口语（不要 Markdown、不要列表）。\n- 忠实于页面内容，不要编造页面未暗示的事实。\n- 与用户同一语言。自然引用页面，不要原样复述。\n- 禁止输出 tool_call、本 schema 以外的函数调用 JSON、XML 工具标签，或 ]<]minimax[> 之类特殊标记。",
-          "bookVoiceUser": "## 书籍与页码\n{{source}}\n\n## 当前页面内容\n---\n{{pageText}}\n---\n\n## 已发生的对话\n{{history}}\n\n## 用户的新消息\n{{request}}\n\n请按指令要求的 JSON 格式回复（简短开场 + 观点卡片）。"
+          "bookVoicePersona": "你是一位体贴的阅读搭档，正通过语音与用户讨论其正在阅读的书籍页面。你能看到下方提供的页面内容。\n\n始终只输出合法 JSON（不要 Markdown 代码块、不要说明）：\n{\"summary\":\"用用户语言写的简短开场（1–2 句，约 40 字以内）\",\"hub\":\"本轮观点卡片的中心主题（不超过 20 字）\",\"branches\":[{\"title\":\"观点标题\",\"content\":\"该观点的 1–2 句口语展开\"}],\"images\":[{\"title\":\"短标题\",\"prompt\":\"具体可视的插画提示词\"}]}\n\n规则：\n- 朗读是分段的：先读 `summary`，再按顺序读每个 branch（读到哪段，对应卡片才出现）。\n- `summary` 只做总体回应/定调，不要把所有观点塞进摘要。\n- `hub` + `branches`（3–6 个）：每个 branch 是一个独立观点；`content` 必须是自然口语（不要 Markdown、不要列表）。\n- 可选 `images`（0–2）：仅当示意图/场景图能帮助理解时才给；`prompt` 要具体可视（物、场景、风格），不要空泛口号。\n- 忠实于页面内容，不要编造页面未暗示的事实。\n- 与用户同一语言。自然引用页面，不要原样复述。\n- 禁止输出 tool_call、本 schema 以外的函数调用 JSON、XML 工具标签，或 ]<]minimax[> 之类特殊标记。",
+          "bookVoiceUser": "## 书籍与页码\n{{source}}\n\n## 当前页面内容\n---\n{{pageText}}\n---\n\n## 已发生的对话\n{{history}}\n\n## 用户的新消息\n{{request}}\n\n请按指令要求的 JSON 格式回复（简短开场 + 观点卡片 + 可选配图）。"
         }
       },
       "lab": {

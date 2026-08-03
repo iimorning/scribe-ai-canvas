@@ -75,11 +75,50 @@ export function parseBookExpandPlan(text: string): BookExpandPlan | null {
   }
 }
 
+export type BookVoiceImageSpec = {
+  /** Short label for the image card. */
+  title: string;
+  /** Text-to-image prompt (prefer concrete visual English/Chinese). */
+  prompt: string;
+};
+
 export type BookVoiceReply = {
   /** Spoken reply for TTS (not the card JSON). */
   summary: string;
   plan: BookExpandPlan;
+  /** Optional illustrations (max 2) generated via Flux when a 302 key is set. */
+  images: BookVoiceImageSpec[];
 };
+
+function normalizeBookVoiceImages(raw: unknown): BookVoiceImageSpec[] {
+  if (!raw || typeof raw !== 'object') return [];
+  const obj = raw as Record<string, unknown>;
+  const list = Array.isArray(obj.images)
+    ? obj.images
+    : Array.isArray(obj.illustrations)
+      ? obj.illustrations
+      : null;
+  if (!list) return [];
+  const out: BookVoiceImageSpec[] = [];
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    const prompt =
+      asNonEmptyString(row.prompt, 500) ||
+      asNonEmptyString(row.imagePrompt, 500) ||
+      asNonEmptyString(row.image_prompt, 500);
+    if (!prompt) continue;
+    const title =
+      asNonEmptyString(row.title, 60) ||
+      asNonEmptyString(row.name, 60) ||
+      asNonEmptyString(row.label, 60) ||
+      prompt.slice(0, 40);
+    if (!title) continue;
+    out.push({ title, prompt });
+    if (out.length >= 2) break;
+  }
+  return out;
+}
 
 /**
  * Book voice chat returns spoken `summary` plus a hub/branches concept map.
@@ -92,7 +131,7 @@ export function parseBookVoiceReply(text: string): BookVoiceReply | null {
     if (!plan || !raw || typeof raw !== 'object') return null;
     const summary = asNonEmptyString((raw as Record<string, unknown>).summary, 400);
     if (!summary) return null;
-    return { summary, plan };
+    return { summary, plan, images: normalizeBookVoiceImages(raw) };
   } catch {
     return null;
   }

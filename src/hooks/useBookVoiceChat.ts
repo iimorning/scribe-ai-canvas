@@ -8,11 +8,12 @@ import {
 } from '../constants/voiceWriting';
 import { callUniversalAI } from '../services/ai';
 import { startMicCapture, type MicCapture } from '../services/micCapture';
-import type { BookExpandBranch } from '../services/spawnBookExpandCards';
+import type { BookExpandBranch, BookVoiceImageSpec } from '../services/spawnBookExpandCards';
 import {
   parseBookVoiceReply,
   spokenBookVoiceBranchLine,
 } from '../services/spawnBookExpandCards';
+import { generateFluxDevImage, hasFlux302Credentials } from '../services/flux302';
 import { hasVolcAsrCredentials, openVolcAsrSession, type VolcAsrSession } from '../services/volcAsr';
 import { combineSystemParts, getLocaleDirective } from '../utils/aiI18n';
 import { createTtsSentenceQueue } from '../utils/ttsSentenceQueue';
@@ -34,6 +35,13 @@ export type BookVoiceCardSpawner = {
     branch: BookExpandBranch,
     index: number,
     branchCount: number,
+  ) => Promise<void>;
+  /** Place a Flux illustration beside the current hub lane. */
+  spawnImage?: (
+    hubId: string,
+    image: { title: string; imageUrl: string },
+    index: number,
+    total: number,
   ) => Promise<void>;
 };
 
@@ -271,16 +279,26 @@ export function useBookVoiceChat({
       onError: (message: string) => appAlert({ message }),
     };
 
-    /** One TTS stream per spoken segment so we can await idle between viewpoints. */
+    /** One TTS stream per spoken segment so we can await idle between viewpoints.
+     *  Always `stop()` afterward — MiniMax keeps an AudioContext open until stop(),
+     *  and leaking one context per summary/branch quickly OOMs the tab. */
     const speakSegment = async (text: string) => {
       const line = text.replace(/\s+/g, ' ').trim();
       if (!line || !activeRef.current) return;
+      if (ttsRef.current) {
+        ttsRef.current.stop();
+        ttsRef.current = null;
+      }
       const tts = createTtsSentenceQueue(ttsOpts);
       ttsRef.current = tts;
-      tts.pushAccumulatedText(line);
-      tts.flush();
-      await tts.waitUntilIdle();
-      if (ttsRef.current === tts) ttsRef.current = null;
+      try {
+        tts.pushAccumulatedText(line);
+        tts.flush();
+        await tts.waitUntilIdle();
+      } finally {
+        tts.stop();
+        if (ttsRef.current === tts) ttsRef.current = null;
+      }
     };
 
     let assistantText = '';
@@ -298,13 +316,9 @@ export function useBookVoiceChat({
           history: history || '',
           request: userText,
         }),
-        onStreamChunk: (acc) => {
-          assistantMsg.text = acc;
-          setMessages((prev) => {
-            const next = [...prev];
-            next[next.length - 1] = { ...assistantMsg };
-            return next;
-          });
+        onStreamChunk: () => {
+          // Do not push raw JSON into React message state every token — that retains
+          // large intermediate strings across many re-renders and can OOM the tab.
         },
       });
     } catch (err) {
@@ -338,6 +352,23 @@ export function useBookVoiceChat({
         }
       }
 
+      // Kick off Flux illustrations while speech runs (do not block TTS).
+      const imageJobs = startBookVoiceImages({
+        images: parsed.images,
+        hubId,
+        apiKey: aiConfig.api302Key,
+        spawner,
+        activeRef,
+        onMissingKey: () => {
+          if (parsed.images.length > 0) {
+            void appAlert({ message: t('voice.flux_need_key') });
+          }
+        },
+        onError: (message) => {
+          void appAlert({ message: t('voice.flux_error', { message }) });
+        },
+      });
+
       await speakSegment(parsed.summary);
 
       for (let i = 0; i < branches.length; i++) {
@@ -353,6 +384,8 @@ export function useBookVoiceChat({
         }
         await speakSegment(spokenBookVoiceBranchLine(branch));
       }
+
+      await imageJobs;
     } else if (assistantText.trim()) {
       // Graceful fallback: plain prose still gets spoken; broken JSON gets a short notice.
       const trimmed = assistantText.trim();
@@ -414,4 +447,37 @@ export function useBookVoiceChat({
 function formatAiError(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+async function startBookVoiceImages(options: {
+  images: BookVoiceImageSpec[];
+  hubId: string | null;
+  apiKey: string | undefined;
+  spawner: BookVoiceCardSpawner | undefined;
+  activeRef: { current: boolean };
+  onMissingKey: () => void;
+  onError: (message: string) => void;
+}): Promise<void> {
+  const specs = options.images.slice(0, 2);
+  if (specs.length === 0 || !options.spawner?.spawnImage || !options.hubId) return;
+  if (!hasFlux302Credentials(options.apiKey)) {
+    options.onMissingKey();
+    return;
+  }
+  const apiKey = (options.apiKey ?? '').trim();
+  const hubId = options.hubId;
+  const spawnImage = options.spawner.spawnImage;
+
+  await Promise.allSettled(
+    specs.map(async (spec, index) => {
+      try {
+        const { url } = await generateFluxDevImage({ apiKey, prompt: spec.prompt });
+        if (!options.activeRef.current) return;
+        await spawnImage(hubId, { title: spec.title, imageUrl: url }, index, specs.length);
+      } catch (err) {
+        console.error('[Spoor] book voice flux image failed', err);
+        options.onError(err instanceof Error ? err.message : String(err));
+      }
+    }),
+  );
 }

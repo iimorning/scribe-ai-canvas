@@ -39,6 +39,13 @@
   status = 200
   force = true
 
+# 302.AI (Flux-2-Klein-4b): /api/302/* -> https://api.302ai.cn/*
+[[redirects]]
+  from = "/api/302/*"
+  to = "https://api.302ai.cn/:splat"
+  status = 200
+  force = true
+
 # SPA: client-side routes
 [[redirects]]
   from = "/*"

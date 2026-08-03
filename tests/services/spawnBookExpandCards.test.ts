@@ -60,6 +60,22 @@ describe('parseBookVoiceReply', () => {
     expect(reply?.summary).toBe('这页在讲注意力的代价。');
     expect(reply?.plan.hub).toBe('注意力经济');
     expect(reply?.plan.branches).toHaveLength(3);
+    expect(reply?.images).toEqual([]);
+  });
+
+  it('parses optional images for Flux', () => {
+    const reply = parseBookVoiceReply(JSON.stringify({
+      summary: '我来画个示意。',
+      hub: '主题',
+      branches: [
+        { title: '一', content: 'a' },
+        { title: '二', content: 'b' },
+      ],
+      images: [{ title: '示意', prompt: 'two classrooms side by side, soft watercolor' }],
+    }));
+    expect(reply?.images).toEqual([
+      { title: '示意', prompt: 'two classrooms side by side, soft watercolor' },
+    ]);
   });
 
   it('rejects plans without a spoken summary', () => {

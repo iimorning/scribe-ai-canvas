@@ -80,6 +80,8 @@ vi.mock(import('react-i18next'), async () => {
         if (key === 'voice.need_minimax_key') return 'need-minimax-key';
         if (key === 'voice.config_missing') return 'config-missing';
         if (key === 'voice.book_voice_parse_failed') return 'parse-failed-stub';
+        if (key === 'voice.flux_need_key') return 'flux-need-key';
+        if (key === 'voice.flux_error') return `flux-error:${opts?.message}`;
         return key;
       },
     }),
