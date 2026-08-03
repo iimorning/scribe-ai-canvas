@@ -19,6 +19,9 @@ export type BookVoiceMessage = {
   text: string;
 };
 
+/** After the last ASR update, wait this long before auto-submitting the turn. */
+const AUTO_SUBMIT_SILENCE_MS = 1300;
+
 type UseBookVoiceChatParams = {
   /** Required when not disabled. The BookNode passes `aiConfig ?? null`; the hook
    *  treats null/undefined as "no voice chat possible" and stops the session. */
@@ -48,6 +51,14 @@ export function useBookVoiceChat({ aiConfig, pageContext, disabled }: UseBookVoi
   const latestTranscriptRef = useRef('');
   const finishRoundRef = useRef<(() => string) | null>(null);
   const startingRef = useRef(false);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const runAiTurnRef = useRef<(userText: string) => Promise<void>>(async () => {});
+  /**
+   * Suppress onClose→stop while we intentionally tear down ASR (finishRound / stop).
+   * Must stay true across the async WebSocket onclose tick, or stop() wipes the
+   * transcript before runAiTurn and aborts the session with no reply.
+   */
+  const suppressAsrCloseStopRef = useRef(false);
 
   pageContextRef.current = pageContext;
   phaseRef.current = phase;
@@ -58,7 +69,16 @@ export function useBookVoiceChat({ aiConfig, pageContext, disabled }: UseBookVoi
     setPhase(p);
   }, []);
 
+  const clearSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+  }, []);
+
   const teardownSession = useCallback(() => {
+    clearSilenceTimer();
+    suppressAsrCloseStopRef.current = true;
     if (micRef.current) {
       void micRef.current.stop();
       micRef.current = null;
@@ -74,7 +94,7 @@ export function useBookVoiceChat({ aiConfig, pageContext, disabled }: UseBookVoi
     finishRoundRef.current = null;
     latestTranscriptRef.current = '';
     setPartialTranscript('');
-  }, []);
+  }, [clearSilenceTimer]);
 
   const stop = useCallback(() => {
     activeRef.current = false;
@@ -126,11 +146,28 @@ export function useBookVoiceChat({ aiConfig, pageContext, disabled }: UseBookVoi
     // （参见 services/volcAsr.ts:253-267 注释）。直接以最新累积文本替换即可，不要追加。
     latestTranscriptRef.current = '';
     setPartialTranscript('');
+    clearSilenceTimer();
+    // New listen round — unexpected socket drops should stop again.
+    suppressAsrCloseStopRef.current = false;
+
+    const scheduleAutoSubmit = () => {
+      clearSilenceTimer();
+      if (!latestTranscriptRef.current.trim()) return;
+      silenceTimerRef.current = setTimeout(() => {
+        silenceTimerRef.current = null;
+        if (!activeRef.current || phaseRef.current !== 'listening') return;
+        const finish = finishRoundRef.current;
+        if (!finish) return;
+        const userText = finish();
+        if (userText) void runAiTurnRef.current(userText);
+      }, AUTO_SUBMIT_SILENCE_MS);
+    };
 
     const replaceTranscript = (text: string) => {
       if (!activeRef.current) return;
       latestTranscriptRef.current = text;
       setPartialTranscript(text);
+      if (text.trim()) scheduleAutoSubmit();
     };
 
     const session = await openVolcAsrSession(creds, {
@@ -138,12 +175,14 @@ export function useBookVoiceChat({ aiConfig, pageContext, disabled }: UseBookVoi
       onDefinite: replaceTranscript,
       onError: (message) => {
         if (!activeRef.current) return;
+        if (suppressAsrCloseStopRef.current) return;
         appAlert({ message });
         stop();
       },
       onClose: () => {
         if (!activeRef.current) return;
-        // Unexpected close mid-listening: abort.
+        // finishRound / teardown close the socket on purpose — ws.onclose is async.
+        if (suppressAsrCloseStopRef.current) return;
         stop();
       },
     });
@@ -154,15 +193,18 @@ export function useBookVoiceChat({ aiConfig, pageContext, disabled }: UseBookVoi
 
     finishRoundRef.current = () => {
       finishRoundRef.current = null;
-      if (micRef.current) { void micRef.current.stop(); micRef.current = null; }
-      if (asrRef.current) { asrRef.current.close(); asrRef.current = null; }
+      clearSilenceTimer();
+      // Capture before close: async asr.onClose must not clear this via stop().
       const userText = latestTranscriptRef.current.trim();
       setPartialTranscript('');
+      suppressAsrCloseStopRef.current = true;
+      if (micRef.current) { void micRef.current.stop(); micRef.current = null; }
+      if (asrRef.current) { asrRef.current.close(); asrRef.current = null; }
       return userText;
     };
 
     setPhaseSync('listening');
-  }, [aiConfig, appAlert, setPhaseSync, stop, t]);
+  }, [aiConfig, appAlert, clearSilenceTimer, setPhaseSync, stop, t]);
 
   const runAiTurn = useCallback(async (userText: string) => {
     const ctx = pageContextRef.current;
@@ -243,6 +285,8 @@ export function useBookVoiceChat({ aiConfig, pageContext, disabled }: UseBookVoi
     setPhaseSync('idle');
     await startListening();
   }, [aiConfig, appAlert, setPhaseSync, startListening, t]);
+
+  runAiTurnRef.current = runAiTurn;
 
   const toggle = useCallback(async () => {
     if (disabled) return;

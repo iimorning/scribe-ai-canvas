@@ -164,10 +164,11 @@ describe('BookNode', () => {
     expect(btn.disabled).toBe(true);
   });
 
-  it('voice stop button toggles off via stop() when active', () => {
+  it('active voice keeps the toolbar mic (no full-page overlay) and toggles via toggle()', () => {
     voiceChatMock.active = true;
-    voiceChatMock.stop = vi.fn();
-    const { getAllByLabelText } = render(
+    voiceChatMock.phase = 'listening';
+    voiceChatMock.toggle = vi.fn();
+    const { getByLabelText, queryByText } = render(
       <BookNode
         node={makeBookNode()}
         editingNodeId={null}
@@ -175,9 +176,9 @@ describe('BookNode', () => {
         aiConfig={{} as never}
       />,
     );
-    // Two stop buttons render when voice is active: the floating panel close and the toolbar toggle.
-    const stopButtons = getAllByLabelText('voice.book_chat_stop');
-    fireEvent.click(stopButtons[0]!);
-    expect(voiceChatMock.stop).toHaveBeenCalled();
+    // Overlay copy removed — book page stays visible; only the toolbar control flips state.
+    expect(queryByText('You')).toBeNull();
+    fireEvent.click(getByLabelText('voice.book_chat_stop'));
+    expect(voiceChatMock.toggle).toHaveBeenCalled();
   });
 });

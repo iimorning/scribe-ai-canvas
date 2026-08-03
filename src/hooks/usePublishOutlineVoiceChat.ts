@@ -91,6 +91,12 @@ export function usePublishOutlineVoiceChat({
   const outlineRef = useRef<PublishOutline | null>(outline);
   const latestTranscriptRef = useRef('');
   const finishRoundRef = useRef<(() => string) | null>(null);
+  /**
+   * Suppress onClose→stop while we intentionally tear down ASR (finishRound / stop).
+   * Must stay true across the async WebSocket onclose tick, or stop() wipes the
+   * transcript before runAiTurn and aborts the session with no reply.
+   */
+  const suppressAsrCloseStopRef = useRef(false);
   const startingRef = useRef(false);
 
   outlineRef.current = outline;
@@ -103,6 +109,7 @@ export function usePublishOutlineVoiceChat({
   }, []);
 
   const teardownSession = useCallback(() => {
+    suppressAsrCloseStopRef.current = true;
     if (micRef.current) {
       void micRef.current.stop();
       micRef.current = null;
@@ -163,6 +170,8 @@ export function usePublishOutlineVoiceChat({
     // （参见 services/volcAsr.ts:253-267 注释）。直接以最新累积文本替换即可，不要追加。
     latestTranscriptRef.current = '';
     setPartialTranscript('');
+    // New listen round — unexpected socket drops should stop again.
+    suppressAsrCloseStopRef.current = false;
 
     const replaceTranscript = (text: string) => {
       if (!activeRef.current) return;
@@ -175,11 +184,14 @@ export function usePublishOutlineVoiceChat({
       onDefinite: replaceTranscript,
       onError: (message) => {
         if (!activeRef.current) return;
+        if (suppressAsrCloseStopRef.current) return;
         appAlert({ message });
         stop();
       },
       onClose: () => {
         if (!activeRef.current) return;
+        // finishRound / teardown close the socket on purpose — ws.onclose is async.
+        if (suppressAsrCloseStopRef.current) return;
         stop();
       },
     });
@@ -190,10 +202,12 @@ export function usePublishOutlineVoiceChat({
 
     finishRoundRef.current = () => {
       finishRoundRef.current = null;
-      if (micRef.current) { void micRef.current.stop(); micRef.current = null; }
-      if (asrRef.current) { asrRef.current.close(); asrRef.current = null; }
+      // Capture before close: async asr.onClose must not clear this via stop().
       const userText = latestTranscriptRef.current.trim();
       setPartialTranscript('');
+      suppressAsrCloseStopRef.current = true;
+      if (micRef.current) { void micRef.current.stop(); micRef.current = null; }
+      if (asrRef.current) { asrRef.current.close(); asrRef.current = null; }
       return userText;
     };
 

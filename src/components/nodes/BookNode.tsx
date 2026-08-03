@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, ChevronLeft, ChevronRight, GitBranch, Loader2, Mic, MicOff, Square, StickyNote, Sparkles } from 'lucide-react';
+import { BookOpen, ChevronLeft, ChevronRight, GitBranch, Loader2, Mic, Square, StickyNote, Sparkles } from 'lucide-react';
 import { db } from '../../db';
 import type { BookNodeProps } from './types';
 import { CANVAS_NODE_CONTEXT_TEXT_ATTR } from '../../utils/canvasNodeContextText';
@@ -385,7 +385,6 @@ export function BookNode({
   });
   const voiceActive = voice.active;
   const voicePhase = voice.phase;
-  const voiceMessages = voice.messages;
   const voicePartial = voice.partialTranscript;
   const voiceToggle = voice.toggle;
   const voiceStop = voice.stop;
@@ -538,46 +537,6 @@ export function BookNode({
           </div>
         )}
 
-        {voiceActive && (
-          <div
-            className="absolute inset-0 z-30 bg-white/95 backdrop-blur-sm flex flex-col p-3 gap-2 overflow-y-auto scrollbar-hide"
-            data-no-drag=""
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between shrink-0">
-              <span className="flex items-center gap-1.5 text-[10px] font-sans font-bold uppercase tracking-wider text-[#C2410C]">
-                {voicePhase === 'listening' && <Mic className="w-3 h-3 animate-pulse" />}
-                {voicePhase === 'thinking' && <Loader2 className="w-3 h-3 animate-spin" />}
-                {voicePhase === 'speaking' && <Square className="w-3 h-3" />}
-                {voicePhaseLabel}
-              </span>
-              <button
-                type="button"
-                className="p-1 rounded-md text-[#5a5a54] hover:bg-[#F4F1ED] transition-colors"
-                aria-label={t('voice.book_chat_stop')}
-                onClick={() => voiceStopRef.current?.()}
-              >
-                <MicOff className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide space-y-2 text-xs font-sans leading-relaxed">
-              {voiceMessages.map((m, i) => (
-                <div
-                  key={i}
-                  className={m.role === 'user' ? 'text-[#5a5a54]' : 'text-[#1a1a1a]'}
-                >
-                  <span className="text-[9px] font-mono uppercase tracking-wider text-[#8c8a84] mr-1">
-                    {m.role === 'user' ? 'You' : 'AI'}
-                  </span>
-                  {m.text || '…'}
-                </div>
-              ))}
-              {voicePhase === 'listening' && voicePartial && (
-                <div className="text-[#8c8a84] italic">{voicePartial}</div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       <div
@@ -591,14 +550,24 @@ export function BookNode({
             disabled={!aiConfig || voiceChatDisabled || isExpanding}
             className={`p-1.5 rounded-md transition-colors disabled:opacity-30 ${
               voiceActive
-                ? 'text-[#C2410C] bg-[#FFF7ED]'
+                ? 'text-[#C2410C] bg-[#FFF7ED] ring-2 ring-[#C2410C]/25'
                 : 'text-[#5a5a54] hover:bg-[#F4F1ED]'
             }`}
             aria-label={voiceActive ? t('voice.book_chat_stop') : t('voice.book_chat_start')}
-            title={voiceActive ? t('voice.book_chat_stop') : t('voice.book_chat_start')}
+            title={
+              voiceActive
+                ? `${voicePhaseLabel}${voicePartial ? ` · ${voicePartial}` : ''}`
+                : t('voice.book_chat_start')
+            }
             onClick={() => voiceToggleRef.current?.()}
           >
-            {voiceActive ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            {voicePhase === 'thinking' ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : voicePhase === 'speaking' ? (
+              <Square className="w-4 h-4" />
+            ) : (
+              <Mic className={`w-4 h-4 ${voiceActive && voicePhase === 'listening' ? 'animate-pulse' : ''}`} />
+            )}
           </button>
           <button
             type="button"

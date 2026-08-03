@@ -107,6 +107,8 @@ beforeEach(() => {
   hasVolcAsrCredentials.mockReturnValue(true);
   for (const k of Object.keys(asrHandlers)) delete (asrHandlers as Record<string, unknown>)[k];
   Object.values(asrSession).forEach((fn) => (fn as { mockClear: () => void }).mockClear());
+  asrSession.close.mockReset();
+  asrSession.close.mockImplementation(() => undefined);
   ttsPushAccumulated.mockClear();
   ttsFlush.mockClear();
   ttsWaitUntilIdle.mockClear();
@@ -413,5 +415,58 @@ describe('useBookVoiceChat — AI turn', () => {
     });
     const lastAssistant = [...result.current.messages].reverse().find((m) => m.role === 'assistant');
     expect(lastAssistant?.text).toBe('upstream down');
+  });
+
+  it('auto-submits after silence following ASR text (no second mic tap)', async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderChat();
+      await act(async () => {
+        await result.current.toggle();
+        await flushMicrotasks();
+      });
+      callUniversalAI.mockClear();
+      await act(async () => {
+        asrHandlers.onDefinite?.('自动接话');
+        await flushMicrotasks();
+      });
+      expect(callUniversalAI).not.toHaveBeenCalled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1400);
+        await flushMicrotasks();
+      });
+      expect(callUniversalAI).toHaveBeenCalled();
+      const arg = callUniversalAI.mock.calls[0]?.[0] as { prompt?: string };
+      expect(arg.prompt).toContain('自动接话');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('async ASR onClose after finishRound does not wipe transcript / abort the AI turn', async () => {
+    // Real Volc close fires ws.onclose on a later tick — must not call stop().
+    asrSession.close.mockImplementation(() => {
+      queueMicrotask(() => {
+        asrHandlers.onClose?.();
+      });
+    });
+
+    const { result } = renderChat();
+    await act(async () => {
+      await result.current.toggle();
+      await flushMicrotasks();
+      asrHandlers.onDefinite?.('还在吗');
+      await flushMicrotasks();
+    });
+    callUniversalAI.mockClear();
+    await act(async () => {
+      await result.current.toggle();
+      await flushMicrotasks();
+    });
+    expect(callUniversalAI).toHaveBeenCalled();
+    const arg = callUniversalAI.mock.calls[0]?.[0] as { prompt?: string };
+    expect(arg.prompt).toContain('还在吗');
+    // Session stays active through the AI turn (mic only "closes" for listening).
+    expect(result.current.active).toBe(true);
   });
 });
