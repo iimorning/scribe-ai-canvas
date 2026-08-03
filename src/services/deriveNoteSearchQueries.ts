@@ -4,6 +4,7 @@ import { callUniversalAI } from './ai';
 import { combineSystemParts, getLocaleDirective } from '../utils/aiI18n';
 import { parseLenientLlmJson } from '../utils/llmJson';
 import { deriveSearchQueryFromNoteText } from './spawnWebSearchNoteCards';
+import { enrichSearchQueryWithLinkedContext } from '../utils/linkedCardSearchContext';
 
 export interface NoteSearchQueries {
   /** Query for webpage search */
@@ -69,33 +70,61 @@ export function normalizeNoteSearchQueries(raw: unknown, noteText: string): Note
 
 /**
  * Ask the model what the note is really about, then return search queries.
+ * Pass `linkedContext` when other cards are edge-connected so queries keep that background.
  * Falls back to heuristic first-line extraction if the model call fails.
  */
 export async function deriveNoteSearchQueries(
   noteText: string,
   config: AIConfig,
   t: TFunction<'translation', undefined>,
+  options?: { linkedContext?: string; linkedTexts?: string[] },
 ): Promise<NoteSearchQueries | null> {
   const trimmed = noteText.replace(/\r\n/g, '\n').trim();
   if (!trimmed) return null;
 
-  const fallback = fallbackFromNote(trimmed);
+  const linkedTexts = options?.linkedTexts ?? [];
+  const linked =
+    (options?.linkedContext ?? '').trim() ||
+    (linkedTexts.length > 0 ? linkedTexts.join('\n\n---\n\n') : '(none)');
+  const hasLinked = linked !== '(none)' && linked.length > 0;
+
+  const applyLinkedEnrichment = (plan: NoteSearchQueries | null): NoteSearchQueries | null => {
+    if (!plan || linkedTexts.length === 0) return plan;
+    return {
+      ...plan,
+      webQuery: enrichSearchQueryWithLinkedContext(plan.webQuery, linkedTexts),
+      imageQuery: enrichSearchQueryWithLinkedContext(plan.imageQuery, linkedTexts),
+    };
+  };
+
+  const fallback = applyLinkedEnrichment(fallbackFromNote(trimmed));
 
   try {
+    let prompt = t('ai.prompts.noteSearchQueryUser', {
+      note: trimmed.slice(0, 4000),
+      linked: linked.slice(0, 6000),
+    });
+    // If i18n dropped the linked block, append it explicitly.
+    if (hasLinked) {
+      const probe = linked.slice(0, Math.min(24, linked.length));
+      if (probe && !prompt.includes(probe)) {
+        prompt = `${prompt}\n\nLinked notes (fallback):\n"""\n${linked.slice(0, 6000)}\n"""`;
+      }
+    }
+
     const raw = await callUniversalAI({
       config,
       systemInstruction: combineSystemParts(
         getLocaleDirective(),
         t('ai.prompts.noteSearchQuerySystem'),
       ),
-      prompt: t('ai.prompts.noteSearchQueryUser', {
-        note: trimmed.slice(0, 4000),
-      }),
+      prompt,
       temperature: 0.2,
       topP: 0.4,
     });
     if (!raw?.trim()) return fallback;
-    return normalizeNoteSearchQueries(parseLenientLlmJson(raw), trimmed) ?? fallback;
+    const normalized = normalizeNoteSearchQueries(parseLenientLlmJson(raw), trimmed) ?? fallback;
+    return applyLinkedEnrichment(normalized);
   } catch {
     return fallback;
   }

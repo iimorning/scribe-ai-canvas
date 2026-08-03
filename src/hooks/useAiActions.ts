@@ -22,6 +22,10 @@ import {
   resolveImageDataUrlsFromNodeIds,
 } from '../utils/canvasContextImages';
 import { getCanvasNodeContextText } from '../utils/canvasNodeContextText';
+import {
+  collectLinkedCardTextsForSearch,
+  formatLinkedCardContextForSearch,
+} from '../utils/linkedCardSearchContext';
 import { db } from '../db';
 import { useAppDialog } from '../components/AppDialogProvider';
 import { runCanvasStreamingAiCall } from '../utils/canvasStreamingAi';
@@ -217,9 +221,20 @@ export function useAiActions({
     noteSearchGuardRef.current = true;
     setSearchingNoteNodeId(noteNodeId);
     try {
-      const queries = await deriveNoteSearchQueries(noteText, aiConfig, t);
+      const linkedTexts = collectLinkedCardTextsForSearch(noteNodeId, dynamicNodes, edges);
+      const linkedContext = formatLinkedCardContextForSearch(linkedTexts);
+      const queries = await deriveNoteSearchQueries(noteText, aiConfig, t, {
+        linkedContext,
+        linkedTexts,
+      });
       const imageQuery = queries?.imageQuery || queries?.webQuery || '';
       const mediaQuery = queries?.webQuery || queries?.imageQuery || imageQuery;
+      console.info('[Spoor] note search intent', {
+        noteId: noteNodeId,
+        linkedCards: linkedTexts.length,
+        webQuery: mediaQuery,
+        imageQuery,
+      });
       if (!imageQuery && !mediaQuery) {
         void appAlert({ message: t('nodes.search_need_note_text') });
         return;
