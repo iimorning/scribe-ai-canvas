@@ -140,4 +140,17 @@ describe('ThemeNode blur 持久化', () => {
     );
     expect(container.querySelectorAll('[contenteditable="true"]')).toHaveLength(3);
   });
+
+  it('标题允许换行，避免窄主题卡裁切长句', () => {
+    const { container } = render(
+      <ThemeNode
+        node={makeNode({ content: '中国教师会不会走日本化的老路' })}
+        editingNodeId={null}
+        setEditingNodeId={vi.fn()}
+      />,
+    );
+    const title = container.querySelector('h3');
+    expect(title?.className).toMatch(/break-words/);
+    expect(title?.className).toMatch(/whitespace-normal/);
+  });
 });

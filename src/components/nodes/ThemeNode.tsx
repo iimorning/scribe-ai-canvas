@@ -135,14 +135,14 @@ export function ThemeNode({
       )}
 
       <div
-        className={`flex-1 overflow-y-auto min-h-0 pr-2 custom-scrollbar ${editingNodeId === node.id ? 'select-text' : ''}`}
+        className={`flex-1 overflow-y-auto min-h-0 min-w-0 pr-2 custom-scrollbar ${editingNodeId === node.id ? 'select-text' : ''}`}
         {...{ [CANVAS_NODE_CONTEXT_TEXT_ATTR]: '' }}
       >
         <ThemeEditableField
           as="h3"
           nodeId={node.id}
           displayValue={node.content ?? ''}
-          className={`font-bold leading-tight focus:outline-none rounded px-1 -mx-1 transition-all cursor-text ${
+          className={`font-bold leading-tight break-words [overflow-wrap:anywhere] whitespace-normal focus:outline-none rounded px-1 -mx-1 transition-all cursor-text ${
             node.layout === 1 ? 'text-3xl font-serif mb-4' :
             node.layout === 2 ? 'text-4xl tracking-tighter mb-4' :
             node.layout === 3 ? 'text-xl font-mono uppercase mb-4' :
