@@ -122,23 +122,20 @@ export function useBookVoiceChat({ aiConfig, pageContext, disabled }: UseBookVoi
       return;
     }
 
-    let accumulated = '';
+    // Volc ASR result_type=full 模式下，每一帧 onPartial / onDefinite 都发累积全文
+    // （参见 services/volcAsr.ts:253-267 注释）。直接以最新累积文本替换即可，不要追加。
     latestTranscriptRef.current = '';
     setPartialTranscript('');
 
+    const replaceTranscript = (text: string) => {
+      if (!activeRef.current) return;
+      latestTranscriptRef.current = text;
+      setPartialTranscript(text);
+    };
+
     const session = await openVolcAsrSession(creds, {
-      onPartial: (text) => {
-        if (!activeRef.current) return;
-        const merged = accumulated ? `${accumulated} ${text}` : text;
-        latestTranscriptRef.current = merged;
-        setPartialTranscript(merged);
-      },
-      onDefinite: (text) => {
-        if (!activeRef.current) return;
-        accumulated = accumulated ? `${accumulated} ${text}` : text;
-        latestTranscriptRef.current = accumulated;
-        setPartialTranscript(accumulated);
-      },
+      onPartial: replaceTranscript,
+      onDefinite: replaceTranscript,
       onError: (message) => {
         if (!activeRef.current) return;
         appAlert({ message });

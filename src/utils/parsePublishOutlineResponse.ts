@@ -35,9 +35,7 @@ export function parsePublishOutlineResponse(raw: string, fallbackTitle: string):
           const cardId = typeof s.cardId === 'string' ? s.cardId.trim() : '';
           const heading = typeof s.heading === 'string' ? s.heading.trim() : '';
           const summary = typeof s.summary === 'string' ? s.summary.trim() : '';
-          if (heading || summary) {
-            sections.push({ cardId, heading, summary });
-          }
+          sections.push({ cardId, heading, summary });
         }
         if (sections.length > 0) {
           return { title: title || fallbackTitle, sections };
@@ -52,7 +50,6 @@ export function parsePublishOutlineResponse(raw: string, fallbackTitle: string):
   const lines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean);
   if (lines.length === 0) return null;
   let title = fallbackTitle;
-  let startIdx = 0;
   const h1 = lines.findIndex((l) => /^#(?!#)\s+/.test(l));
   if (h1 >= 0) {
     title = lines[h1].replace(/^#+\s+/, '').trim() || fallbackTitle;

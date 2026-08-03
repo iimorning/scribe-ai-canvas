@@ -107,8 +107,11 @@ describe('useAiActions', () => {
   });
 
   // --- handlePublish ---
+  // 自 commit 1302b80 起，handlePublish 不再同步合成 + 落库，而是打开 PublishOutlineDialog
+  // 由弹窗内的两步流程（generatePublishOutline → 用户确认 → generateArticleFromOutline）负责
+  // 实际生成。segments→sourceCards 的真实覆盖迁到 tests/utils/generateArticleFromOutline.test.ts。
   describe('handlePublish', () => {
-    it('selectedNodes 为空时不执行', async () => {
+    it('selectedNodes 为空时不打开 dialog', async () => {
       const { result } = renderHook(() => useTestAiActions());
 
       await act(async () => {
@@ -116,81 +119,45 @@ describe('useAiActions', () => {
       });
 
       expect(callUniversalAI).not.toHaveBeenCalled();
+      expect(result.current.publishOutlineOpen).toBe(false);
+      expect(result.current.publishOutlineSelectedIds).toEqual([]);
     });
 
-    it('有选中节点时合成并写入 articles（含扩展字段）', async () => {
+    it('有选中节点时打开 dialog 并把 selectedIds 写入 state（不调 AI、不写库）', async () => {
       const { result } = renderHook(() => useTestAiActions());
 
       act(() => {
-        result.current.setSelectedNodes(new Set(['n1']));
+        result.current.setSelectedNodes(new Set(['n1', 'n2']));
         const el = document.createElement('div');
         el.innerText = 'Hello publish body';
         result.current.nodesRef.current.n1 = el;
       });
 
-      vi.mocked(callUniversalAI).mockResolvedValueOnce(publishJsonResponse);
-
       await act(async () => {
         await result.current.handlePublish();
       });
 
-      expect(callUniversalAI).toHaveBeenCalledTimes(1);
-      expect(vi.mocked(callUniversalAI).mock.calls[0][0].onStreamChunk).toBeUndefined();
-      expect(result.current.setActiveTab).toHaveBeenCalledWith('reference');
-      expect(result.current.setActiveReferenceId).toHaveBeenCalled();
-
-      const rows = await db.articles.toArray();
-      expect(rows).toHaveLength(1);
-      expect(rows[0].title).toBe('Synthesized Title');
-      expect(rows[0].content).toContain('## Section');
-      expect(rows[0].tags).toEqual([]);
-      expect(rows[0].linkedCanvasIds).toEqual(['default']);
-      expect(rows[0].author).toBe('');
-      expect(rows[0].type).toMatch(/^GEN-/);
-      // 旧格式 {title, body} 回退：不构建 sourceCards，正文直接用 body
-      expect(rows[0].sourceCards).toBeUndefined();
+      expect(callUniversalAI).not.toHaveBeenCalled();
+      expect(result.current.publishOutlineOpen).toBe(true);
+      expect(result.current.publishOutlineSelectedIds).toEqual(['n1', 'n2']);
     });
 
-    it('结构化 segments 输出时构建 sourceCards 且正文按段拼接', async () => {
+    it('closePublishOutlineDialog 同时清空 selectedIds 并关闭 dialog', async () => {
       const { result } = renderHook(() => useTestAiActions());
 
       act(() => {
-        result.current.setSelectedNodes(new Set(['n1', 'n2']));
-        const el1 = document.createElement('div');
-        el1.innerText = '卡片一内容';
-        const el2 = document.createElement('div');
-        el2.innerText = '卡片二内容';
-        result.current.nodesRef.current.n1 = el1;
-        result.current.nodesRef.current.n2 = el2;
+        result.current.setSelectedNodes(new Set(['n1']));
       });
-
-      vi.mocked(callUniversalAI).mockResolvedValueOnce(
-        JSON.stringify({
-          title: '结构化标题',
-          segments: [
-            { cardId: 'n1', text: '## 段一\n\n第一段正文。' },
-            { cardId: 'n2', text: '## 段二\n\n第二段正文。' },
-          ],
-        }),
-      );
-
       await act(async () => {
         await result.current.handlePublish();
       });
+      expect(result.current.publishOutlineOpen).toBe(true);
 
-      const rows = await db.articles.toArray();
-      expect(rows).toHaveLength(1);
-      expect(rows[0].sourceCards).toHaveLength(2);
-      expect(rows[0].sourceCards![0]).toMatchObject({
-        nodeId: 'n1',
-        canvasId: 'default',
-        segmentText: '## 段一\n\n第一段正文。',
+      act(() => {
+        result.current.closePublishOutlineDialog();
       });
-      expect(rows[0].sourceCards![1]).toMatchObject({
-        nodeId: 'n2',
-        segmentText: '## 段二\n\n第二段正文。',
-      });
-      expect(rows[0].content).toBe('## 段一\n\n第一段正文。\n\n## 段二\n\n第二段正文。');
+      expect(result.current.publishOutlineOpen).toBe(false);
+      expect(result.current.publishOutlineSelectedIds).toEqual([]);
     });
   });
 

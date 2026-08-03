@@ -51,7 +51,7 @@ export async function generateArticleFromOutline({
 
   const parsed = parsePublishArticleResponse(text || '', t('ai.generated_article_title'));
 
-  // 仅保留大纲中出现的 cardId（用户删除的条目不写入 sourceCards）
+  // 仅保留大纲中出现的 cardId（用户删除的条目不写入 sourceCards；大纲完全不含原 cardId 视为不需要 sourceCards 链路）
   const outlineCardIds = new Set(outline.sections.map((s) => s.cardId).filter(Boolean));
 
   // 按 cards 顺序对齐 segments：以 cards 为准，匹配 cardId；缺失段补空；多余段忽略
@@ -60,20 +60,22 @@ export async function generateArticleFromOutline({
     if (seg.cardId) segByCardId.set(seg.cardId, seg.text);
   }
   let sourceCards: SourceCardSegment[] | undefined;
-  if (segByCardId.size > 0) {
-    const eligibleCards = outlineCardIds.size > 0 ? cards.filter((c) => outlineCardIds.has(c.nodeId)) : cards;
-    sourceCards = eligibleCards.map((c) => ({
-      nodeId: c.nodeId,
-      canvasId: c.canvasId,
-      kind: c.kind,
-      title: c.title,
-      segmentText: segByCardId.get(c.nodeId) ?? '',
-    }));
+  if (segByCardId.size > 0 && outlineCardIds.size > 0) {
+    const eligibleCards = cards.filter((c) => outlineCardIds.has(c.nodeId));
+    if (eligibleCards.length > 0) {
+      sourceCards = eligibleCards.map((c) => ({
+        nodeId: c.nodeId,
+        canvasId: c.canvasId,
+        kind: c.kind,
+        title: c.title,
+        segmentText: segByCardId.get(c.nodeId) ?? '',
+      }));
+    }
   }
 
   // 媒体兜底：把模型遗漏的媒体追加到对应卡片段（按 nodeId 匹配），否则追加到末尾段
   const missingMedia = mediaAssets.filter((asset) => {
-    // 若大纲删掉了该媒体所属卡片，则不再兜底（用户已主动剔除）
+    // 若大纲明确删掉了该媒体所属卡片，则不再兜底（用户已主动剔除）
     if (outlineCardIds.size > 0 && !outlineCardIds.has(asset.nodeId)) return false;
     const md = asset.articleMarkdown;
     const urls = [...md.matchAll(/\(([^)\s]+)\)/g)].map((m) => m[1]!);
@@ -84,34 +86,26 @@ export async function generateArticleFromOutline({
     return urls.some((u) => u && !parsed.body.includes(u));
   });
 
-  let body = parsed.body;
-  if (sourceCards && missingMedia.length > 0) {
-    const relatedHeading = t('ai.publish_related_media');
-    const heading = relatedHeading.replace(/\s+/g, ' ').trim() || 'Related media';
+  const relatedHeading = t('ai.publish_related_media').replace(/\s+/g, ' ').trim() || 'Related media';
+
+  let body: string;
+  if (sourceCards) {
+    // sourceCards 链路：把 missingMedia 追加到对应段或末段，再按段拼成正文
     for (const asset of missingMedia) {
+      const attach = `\n\n## ${relatedHeading}\n\n${asset.articleMarkdown}`;
       const idx = sourceCards.findIndex((sc) => sc.nodeId === asset.nodeId);
-      const attach = `\n\n## ${heading}\n\n${asset.articleMarkdown}`;
-      if (idx >= 0) {
-        sourceCards[idx] = {
-          ...sourceCards[idx],
-          segmentText: `${sourceCards[idx].segmentText}${attach}`.trim(),
+      const targetIdx = idx >= 0 ? idx : sourceCards.length - 1;
+      if (targetIdx >= 0) {
+        sourceCards[targetIdx] = {
+          ...sourceCards[targetIdx],
+          segmentText: `${sourceCards[targetIdx].segmentText}${attach}`.trim(),
         };
-      } else {
-        const last = sourceCards.length - 1;
-        if (last >= 0) {
-          sourceCards[last] = {
-            ...sourceCards[last],
-            segmentText: `${sourceCards[last].segmentText}${attach}`.trim(),
-          };
-        }
       }
     }
     body = sourceCards.map((s) => s.segmentText).join('\n\n');
   } else {
-    body = ensurePublishMediaInBody(parsed.body, mediaAssets, t('ai.publish_related_media'));
-    if (sourceCards) {
-      body = sourceCards.map((s) => s.segmentText).join('\n\n');
-    }
+    // 非 sourceCards 链路：用 ensurePublishMediaInBody 把遗漏媒体补到正文末尾
+    body = ensurePublishMediaInBody(parsed.body, mediaAssets, relatedHeading);
   }
 
   const newArticle: Article = {

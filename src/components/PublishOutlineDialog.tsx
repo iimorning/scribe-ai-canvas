@@ -146,8 +146,14 @@ export function PublishOutlineDialog({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [
+    open,
+    selectedIds,
+    dynamicNodes,
+    activeCanvasId,
+    aiConfig,
+    t,
+  ]);
 
   useEffect(() => {
     if (open) return;
