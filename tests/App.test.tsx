@@ -696,12 +696,6 @@ describe('App 组件', () => {
       expect(searchInput).toBeInTheDocument();
     });
 
-    it('参考区显示引用文献按钮', async () => {
-      const user = userEvent.setup();
-      await goToReference(user);
-      expect(screen.getByText('引用文献')).toBeInTheDocument();
-    });
-
     it('参考区显示来源画布区域（替代原元数据与笔记）', async () => {
       const user = userEvent.setup();
       await goToReference(user);

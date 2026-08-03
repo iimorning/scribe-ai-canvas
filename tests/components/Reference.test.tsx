@@ -130,25 +130,6 @@ describe('Reference', () => {
     expect(setId).toHaveBeenCalledWith(expect.stringMatching(/.+/));
   });
 
-  it('引用文献按钮写入剪贴板', async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.spyOn(navigator, 'clipboard', 'get').mockReturnValue({ writeText } as unknown as Clipboard);
-
-    const withAuthor = { ...articleA, author: 'Jane' };
-    await db.articles.add(withAuthor);
-
-    renderReference(<Reference articles={[withAuthor]} activeReferenceId="a-alpha" setActiveReferenceId={vi.fn()} />);
-
-    await user.click(screen.getByRole('button', { name: 'reference.citation' }));
-
-    await waitFor(() => {
-      expect(writeText).toHaveBeenCalled();
-    });
-    expect(String(writeText.mock.calls[0][0])).toContain('Alpha Unique Title');
-    expect(String(writeText.mock.calls[0][0])).toContain('Jane');
-  });
-
   it('关联画布名称点击调用 onOpenCanvas', async () => {
     const user = userEvent.setup();
     await db.canvases.add({
@@ -173,29 +154,6 @@ describe('Reference', () => {
     await user.click(canvasBtn);
 
     expect(onOpen).toHaveBeenCalledWith('cv-test');
-  });
-
-  it('引用文献使用草稿作者与日期（未保存到 DB 前）', async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.spyOn(navigator, 'clipboard', 'get').mockReturnValue({ writeText } as unknown as Clipboard);
-
-    await db.articles.add(articleA);
-
-    renderReference(<Reference articles={[articleA]} activeReferenceId="a-alpha" setActiveReferenceId={vi.fn()} />);
-
-    await user.clear(screen.getByTestId('reference-meta-author'));
-    await user.type(screen.getByTestId('reference-meta-author'), 'Draft Author');
-    await user.clear(screen.getByTestId('reference-meta-date'));
-    await user.type(screen.getByTestId('reference-meta-date'), '2099');
-
-    await user.click(screen.getByRole('button', { name: 'reference.citation' }));
-
-    await waitFor(() => expect(writeText).toHaveBeenCalled());
-    const line = String(writeText.mock.calls[0][0]);
-    expect(line).toContain('Draft Author');
-    expect(line).toContain('2099');
-    expect(line).toContain('Alpha Unique Title');
   });
 
   it('作者元数据防抖写入 IndexedDB', async () => {

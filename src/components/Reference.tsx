@@ -70,14 +70,13 @@ export function Reference({
   onOpenCanvas,
 }: ReferenceProps) {
   const { t } = useTranslation();
-  const { confirm, alert: appAlert } = useAppDialog();
+  const { confirm } = useAppDialog();
   const canvases = useLiveQuery(() => db.canvases.toArray(), []) ?? [];
 
   const [searchQuery, setSearchQuery] = useState('');
   /** 档案索引面板默认折叠，点击左上角按钮展开 */
   const [indexOpen, setIndexOpen] = useState(false);
   const [isEditingBody, setIsEditingBody] = useState(false);
-  const [citationStatus, setCitationStatus] = useState('');
   /** 正文区作者 / 日期：本地草稿，避免 IndexedDB 回写节流时控件「弹回」或与 flex 挤压导致难以点击 */
   const [draftAuthor, setDraftAuthor] = useState('');
   const [draftDateField, setDraftDateField] = useState('');
@@ -164,21 +163,6 @@ export function Reference({
     if (activeReferenceId === article.id) {
       const remaining = articles.filter((a) => a.id !== article.id);
       setActiveReferenceId(remaining[0]?.id ?? '');
-    }
-  };
-
-  const copyCitation = async () => {
-    if (!activeArticle) return;
-    const authorForCitation = draftAuthor.trim() || activeArticle.author?.trim();
-    const authorPart = authorForCitation ? `${authorForCitation}. ` : '';
-    const dateForCitation = draftDateField.trim() || activeArticle.date;
-    const line = `${authorPart}${activeArticle.title} (${dateForCitation}). ${activeArticle.type}.`;
-    try {
-      await navigator.clipboard.writeText(line);
-      setCitationStatus('ok');
-      setTimeout(() => setCitationStatus(''), 2500);
-    } catch {
-      void appAlert({ message: t('reference.citation_failed') });
     }
   };
 
@@ -407,20 +391,7 @@ export function Reference({
         )}
         <div className="sticky top-0 w-full h-14 bg-white/80 backdrop-blur-md border-b border-[#E6E4DF] flex items-center justify-between px-6 z-10">
           <div className="flex items-center gap-4 text-[#5a5a54]" />
-          <div className="flex items-center gap-3">
-            {citationStatus === 'ok' && (
-              <span className="text-[10px] text-green-600 font-sans">{t('reference.citation_copied')}</span>
-            )}
-            <button
-              type="button"
-              onClick={() => void copyCitation()}
-              disabled={!activeArticle}
-              className="text-xs font-sans font-medium text-[#5a5a54] hover:text-[#1a1a1a] bg-white border border-[#E6E4DF] px-3 py-1.5 rounded shadow-sm flex items-center gap-2 disabled:opacity-40"
-            >
-              <Link2 className="w-3.5 h-3.5" />
-              {t('reference.citation')}
-            </button>
-          </div>
+          <div className="flex items-center gap-3" />
         </div>
 
         {!activeArticle ? (
@@ -588,7 +559,28 @@ export function Reference({
 
       <div className="w-72 bg-white flex-shrink-0 flex flex-col font-sans text-xs">
           <div className="p-4 border-b border-[#E6E4DF] font-bold text-[#1a1a1a] h-14 flex items-center bg-[#F4F1ED]/50">
-            {t('reference.linked_drafts')}
+            {hasSourceCards ? (
+              t('reference.linked_drafts')
+            ) : (
+              <div className="flex items-center gap-2 w-full min-w-0">
+                <span className="shrink-0">{t('reference.linked_drafts')}</span>
+                {linkedIds.map((cid) => {
+                  const c = canvases.find((x) => x.id === cid);
+                  return (
+                    <button
+                      key={cid}
+                      type="button"
+                      onClick={() => onOpenCanvas?.(cid)}
+                      disabled={!onOpenCanvas}
+                      className="flex items-center gap-1 min-w-0 font-semibold text-[#1a1a1a] text-[11px] hover:text-[#C2410C] hover:underline disabled:opacity-40"
+                    >
+                      <Link2 className="w-4 h-4 text-[#C2410C] shrink-0" />
+                      <span className="truncate font-normal">{c?.name ?? cid}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
           <div className="p-6 space-y-4 overflow-y-auto">
             {hasSourceCards ? (
@@ -673,28 +665,7 @@ export function Reference({
               </div>
             ) : linkedIds.length === 0 ? (
               <p className="text-[11px] text-[#8c8a84]">{t('reference.linked_empty')}</p>
-            ) : (
-              <div className="space-y-2">
-                {linkedIds.map((cid) => {
-                  const c = canvases.find((x) => x.id === cid);
-                  return (
-                    <div key={cid} className="flex items-start gap-2 p-3 bg-[#FAF9F6] border border-[#E6E4DF] rounded">
-                      <BookOpen className="w-4 h-4 text-[#C2410C] mt-0.5 shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <button
-                          type="button"
-                          onClick={() => onOpenCanvas?.(cid)}
-                          className="font-semibold text-[#1a1a1a] text-[11px] text-left hover:text-[#C2410C] hover:underline"
-                          disabled={!onOpenCanvas}
-                        >
-                          {c?.name ?? cid}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            ) : null}
           </div>
         </div>
     </div>
