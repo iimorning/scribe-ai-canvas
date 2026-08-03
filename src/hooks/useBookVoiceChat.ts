@@ -20,7 +20,9 @@ export type BookVoiceMessage = {
 };
 
 type UseBookVoiceChatParams = {
-  aiConfig: AIConfig;
+  /** Required when not disabled. The BookNode passes `aiConfig ?? null`; the hook
+   *  treats null/undefined as "no voice chat possible" and stops the session. */
+  aiConfig: AIConfig | null;
   /** Current page context; updated as the user flips pages. */
   pageContext: { text: string; label: string };
   /** Disable starting (e.g. when canvas voice mode is active). */
@@ -84,7 +86,24 @@ export function useBookVoiceChat({ aiConfig, pageContext, disabled }: UseBookVoi
 
   useEffect(() => () => { teardownSession(); }, [teardownSession]);
 
+  // Auto-stop an active session if the book gets disabled (canvas voice mode on)
+  // or `aiConfig` is cleared from settings — otherwise the ASR socket, mic, and TTS
+  // queue keep consuming resources and the floating panel stays mounted.
+  useEffect(() => {
+    if (disabled || !aiConfig) {
+      if (activeRef.current) {
+        stop();
+      }
+    }
+  }, [disabled, aiConfig, stop]);
+
   const startListening = useCallback(async () => {
+    if (!aiConfig) {
+      // Auto-stop useEffect already guards the active case; defensive bail here
+      // so a stale ref from a rapid enable/disable cycle can't crash on `null.x`.
+      stop();
+      return;
+    }
     const creds = {
       apiKey: aiConfig.volcAsrApiKey,
       appId: aiConfig.volcAsrAppId,
@@ -93,11 +112,13 @@ export function useBookVoiceChat({ aiConfig, pageContext, disabled }: UseBookVoi
     };
     if (!hasVolcAsrCredentials(creds)) {
       appAlert({ message: t('voice.need_asr_keys') });
+      stop();
       return;
     }
     const minimaxKey = (aiConfig.minimaxApiKey ?? '').trim();
     if (!minimaxKey) {
       appAlert({ message: t('voice.need_minimax_key') });
+      stop();
       return;
     }
 
@@ -159,6 +180,17 @@ export function useBookVoiceChat({ aiConfig, pageContext, disabled }: UseBookVoi
 
     setPhaseSync('thinking');
 
+    if (!aiConfig) {
+      // Bailout — the Auto-stop effect for `!aiConfig` may flip activeRef mid-turn.
+      assistantMsg.text = t('voice.config_missing');
+      setMessages((prev) => {
+        const next = [...prev];
+        next[next.length - 1] = { ...assistantMsg };
+        return next;
+      });
+      return;
+    }
+
     const minimaxKey = (aiConfig.minimaxApiKey ?? '').trim();
     const tts = createTtsSentenceQueue({
       apiKey: minimaxKey,
@@ -217,7 +249,13 @@ export function useBookVoiceChat({ aiConfig, pageContext, disabled }: UseBookVoi
 
   const toggle = useCallback(async () => {
     if (disabled) return;
-    if (activeRef.current || startingRef.current) {
+    // While we're racing to bring up the session, ignore further taps. Without this
+    // guard a fast double click resets `startingRef` (set false synchronously before
+    // the await), falls into the "active" branch with `phaseRef === 'idle'`, and
+    // tears down the half-open session — leaving a dangling ASR/mic handle that
+    // the in-flight startListening will keep alive past teardown.
+    if (startingRef.current) return;
+    if (activeRef.current) {
       // Active: phase-aware stop.
       const p = phaseRef.current;
       if (p === 'listening' && finishRoundRef.current) {
@@ -233,8 +271,11 @@ export function useBookVoiceChat({ aiConfig, pageContext, disabled }: UseBookVoi
     startingRef.current = true;
     activeRef.current = true;
     setActive(true);
-    startingRef.current = false;
-    await startListening();
+    try {
+      await startListening();
+    } finally {
+      startingRef.current = false;
+    }
   }, [disabled, runAiTurn, startListening, stop]);
 
   return { active, phase, messages, partialTranscript, toggle, stop };
