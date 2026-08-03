@@ -63,7 +63,7 @@ describe('parseBookVoiceReply', () => {
     expect(reply?.images).toEqual([]);
   });
 
-  it('parses optional images for Flux', () => {
+  it('parses optional images for GPT-Image', () => {
     const reply = parseBookVoiceReply(JSON.stringify({
       summary: '我来画个示意。',
       hub: '主题',

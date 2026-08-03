@@ -86,7 +86,7 @@ export type BookVoiceReply = {
   /** Spoken reply for TTS (not the card JSON). */
   summary: string;
   plan: BookExpandPlan;
-  /** Optional illustrations (max 2) generated via Flux when a 302 key is set. */
+  /** Optional illustrations (max 2) generated via GPT-Image-2 when a 302 key is set. */
   images: BookVoiceImageSpec[];
 };
 

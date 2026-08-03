@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { generateFluxDevImage, hasFlux302Credentials } from '../../src/services/flux302';
+import { generateFluxDevImage, generateGptImage2, hasFlux302Credentials } from '../../src/services/flux302';
 
 describe('hasFlux302Credentials', () => {
   it('requires a non-empty key', () => {
@@ -75,5 +75,46 @@ describe('generateFluxDevImage', () => {
     const result = await pending;
     expect(result.url).toBe('https://file.302ai.cn/done.jpg');
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain('/flux/v1/get_result?id=t-2');
+  });
+});
+
+describe('generateGptImage2', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('calls /v1/images/generations with gpt-image-2 and returns url', async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: [{ url: 'https://file.302.ai/gpt/imgs/test.jpg' }],
+      }),
+    });
+
+    const result = await generateGptImage2({ apiKey: 'sk-test', prompt: 'a red apple' });
+    expect(result).toEqual({ url: 'https://file.302.ai/gpt/imgs/test.jpg' });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('/v1/images/generations');
+    const body = JSON.parse(String(init.body));
+    expect(body.model).toBe('gpt-image-2');
+    expect(body.prompt).toBe('a red apple');
+    expect(body.size).toBe('1536x1024');
+  });
+
+  it('falls back to base64 data url when no http url is returned', async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: [{ b64_json: 'abc123' }],
+      }),
+    });
+
+    const result = await generateGptImage2({ apiKey: 'sk-test', prompt: 'lantern' });
+    expect(result.url).toBe('data:image/jpeg;base64,abc123');
   });
 });

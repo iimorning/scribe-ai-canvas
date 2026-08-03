@@ -10,6 +10,8 @@ export const FLUX302_UPSTREAM = 'https://api.302ai.cn';
 const CREATE_PATH = '/flux/v1/flux-2-klein-4b';
 /** Docs: GET /flux/v1/get_result?id=… */
 const RESULT_PATH = '/flux/v1/get_result';
+/** Docs: https://doc.302.ai/288853804e0 */
+const GPT_IMAGE_PATH = '/v1/images/generations';
 const POLL_INTERVAL_MS = 1500;
 const POLL_TIMEOUT_MS = 90_000;
 
@@ -173,4 +175,83 @@ export async function generateFluxDevImage(
 
 export function hasFlux302Credentials(apiKey: string | undefined | null): boolean {
   return !!(apiKey ?? '').trim();
+}
+
+export type GptImage2GenerateOptions = {
+  apiKey: string;
+  prompt: string;
+  size?: string;
+  quality?: 'auto' | 'high' | 'medium' | 'low';
+  signal?: AbortSignal;
+};
+
+export type GptImage2GenerateResult = {
+  url: string;
+};
+
+type GptImageResponseBody = {
+  data?: Array<{ url?: string; b64_json?: string }>;
+  error?: { message?: string };
+  message?: string;
+  detail?: unknown;
+};
+
+function formatGptImageError(body: GptImageResponseBody, status: number): string {
+  if (typeof body.error?.message === 'string') return body.error.message;
+  if (typeof body.message === 'string') return body.message;
+  return JSON.stringify(body.detail ?? body) || `HTTP ${status}`;
+}
+
+function extractGptImageUrl(body: GptImageResponseBody): string | null {
+  const first = body.data?.[0];
+  if (!first) return null;
+  const url = (first.url ?? '').trim();
+  if (/^https?:\/\//i.test(url)) return url;
+  const b64 = (first.b64_json ?? '').trim();
+  if (b64) return `data:image/jpeg;base64,${b64}`;
+  return null;
+}
+
+/**
+ * Generate an image via 302.AI GPT-Image-2 (`/v1/images/generations`).
+ * Docs: https://doc.302.ai/288853804e0
+ */
+export async function generateGptImage2(
+  options: GptImage2GenerateOptions,
+): Promise<GptImage2GenerateResult> {
+  const apiKey = options.apiKey.trim();
+  const prompt = options.prompt.replace(/\s+/g, ' ').trim();
+  if (!apiKey) throw new Error('302.AI API key is empty');
+  if (!prompt) throw new Error('Image prompt is empty');
+
+  console.info(`${LOG_PREFIX} gpt-image-2 create`, { prompt: prompt.slice(0, 80) });
+
+  const res = await fetch(resolveUrl(GPT_IMAGE_PATH), {
+    method: 'POST',
+    headers: {
+      ...authHeaders(apiKey),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      prompt,
+      model: 'gpt-image-2',
+      size: options.size ?? '1536x1024',
+      n: 1,
+      quality: options.quality ?? 'medium',
+      output_format: 'jpeg',
+    }),
+    signal: options.signal,
+  });
+
+  const body = (await res.json().catch(() => ({}))) as GptImageResponseBody;
+  if (!res.ok) {
+    throw new Error(
+      `302 GPT-Image failed (HTTP ${res.status}): ${formatGptImageError(body, res.status)}`,
+    );
+  }
+
+  const url = extractGptImageUrl(body);
+  if (!url) throw new Error('302 GPT-Image returned no image URL or data');
+  console.info(`${LOG_PREFIX} gpt-image-2 ready`);
+  return { url };
 }

@@ -13,7 +13,7 @@ import {
   parseBookVoiceReply,
   spokenBookVoiceBranchLine,
 } from '../services/spawnBookExpandCards';
-import { generateFluxDevImage, hasFlux302Credentials } from '../services/flux302';
+import { generateGptImage2, hasFlux302Credentials } from '../services/flux302';
 import { hasVolcAsrCredentials, openVolcAsrSession, type VolcAsrSession } from '../services/volcAsr';
 import { combineSystemParts, getLocaleDirective } from '../utils/aiI18n';
 import { createTtsSentenceQueue } from '../utils/ttsSentenceQueue';
@@ -36,7 +36,7 @@ export type BookVoiceCardSpawner = {
     index: number,
     branchCount: number,
   ) => Promise<void>;
-  /** Place a Flux illustration beside the current hub lane. */
+  /** Place a GPT-Image illustration beside the current hub lane. */
   spawnImage?: (
     hubId: string,
     image: { title: string; imageUrl: string },
@@ -352,7 +352,7 @@ export function useBookVoiceChat({
         }
       }
 
-      // Kick off Flux illustrations while speech runs (do not block TTS).
+      // Kick off GPT-Image-2 illustrations while speech runs (do not block TTS).
       const imageJobs = startBookVoiceImages({
         images: parsed.images,
         hubId,
@@ -471,11 +471,11 @@ async function startBookVoiceImages(options: {
   await Promise.allSettled(
     specs.map(async (spec, index) => {
       try {
-        const { url } = await generateFluxDevImage({ apiKey, prompt: spec.prompt });
+        const { url } = await generateGptImage2({ apiKey, prompt: spec.prompt });
         if (!options.activeRef.current) return;
         await spawnImage(hubId, { title: spec.title, imageUrl: url }, index, specs.length);
       } catch (err) {
-        console.error('[Spoor] book voice flux image failed', err);
+        console.error('[Spoor] book voice gpt-image failed', err);
         options.onError(err instanceof Error ? err.message : String(err));
       }
     }),
