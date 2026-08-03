@@ -413,22 +413,22 @@ export function AgentsStudio({ agentConfigs, setAgentConfigs, aiConfig, callAI }
                   </div>
                   <div className="space-y-2">
                     <div className="flex justify-between items-end">
-                      <label className="text-[10px] font-mono font-bold text-[#8c8a84] uppercase tracking-wider">{t('agents.system_prompt')}</label>
+                      <label className="text-xs font-mono font-bold text-[#5a5a54] uppercase tracking-wider">{t('agents.system_prompt')}</label>
                       <div className="flex items-center gap-3">
-                        <span className={`${(displayPrompt.length || 0) > 2000 ? 'text-red-500' : 'text-[#a09f9c]'} text-[10px] font-mono`}>{displayPrompt.length} / 2000</span>
-                        <button 
+                        <span className={`${(displayPrompt.length || 0) > 2000 ? 'text-red-500' : 'text-[#5a5a54]'} text-xs font-mono`}>{displayPrompt.length} / 2000</span>
+                        <button
                           onClick={handleEnhancePrompt}
                           disabled={isEnhancing || !displayPrompt.trim()}
-                          className="flex items-center gap-1.5 text-[10px] font-bold text-[#C2410C] hover:text-[#9a3412] px-2 py-1 bg-[#C2410C]/5 rounded border border-[#C2410C]/20 transition-all disabled:opacity-50"
+                          className="flex items-center gap-1.5 text-xs font-bold text-[#C2410C] hover:text-[#9a3412] px-2 py-1 bg-[#C2410C]/5 rounded border border-[#C2410C]/20 transition-all disabled:opacity-50"
                         >
-                          {isEnhancing ? <Loader2 className="w-3 h-3 animate-spin"/> : <Wand2 className="w-3 h-3" />}
+                          {isEnhancing ? <Loader2 className="w-3.5 h-3.5 animate-spin"/> : <Wand2 className="w-3.5 h-3.5" />}
                           {t('agents.enhance_prompt')}
                         </button>
                       </div>
                     </div>
-                    <textarea 
-                      className={`w-full p-4 font-mono text-sm text-[#5a5a54] bg-white border ${displayPrompt.length > 2000 ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : 'border-[#E6E4DF] focus:border-[#C2410C] focus:ring-[#C2410C]'} rounded-lg outline-none transition-colors overflow-y-auto resize-y min-h-[160px]`} 
-                      style={{ height: Math.max(160, (displayPrompt.split('\n').length || 1) * 24 + 40) + 'px' }}
+                    <textarea
+                      className={`w-full p-4 font-mono text-base leading-relaxed text-[#1a1a1a] bg-white border ${displayPrompt.length > 2000 ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : 'border-[#E6E4DF] focus:border-[#C2410C] focus:ring-[#C2410C]'} rounded-lg outline-none transition-colors overflow-y-auto resize-y min-h-[180px]`}
+                      style={{ height: Math.max(180, (displayPrompt.split('\n').length || 1) * 26 + 40) + 'px' }}
                       value={displayPrompt}
                       onChange={e => handleUpdateActiveAgent('prompt', e.target.value)}
                       placeholder="You are a specialized agent. Your goal is to..."
@@ -462,10 +462,10 @@ export function AgentsStudio({ agentConfigs, setAgentConfigs, aiConfig, callAI }
                           {t('agents.knowledge_manage_files')}
                         </button>
                       </div>
-                      <p className="text-[11px] text-[#8c8a84] font-sans leading-relaxed">{t('agents.knowledge_hint')}</p>
+                      <p className="text-sm text-[#5a5a54] font-sans leading-relaxed">{t('agents.knowledge_hint')}</p>
                       <div className="space-y-2 min-h-[3rem]">
                         {(activeAgent.knowledgeMarkdownFiles ?? []).length === 0 ? (
-                          <p className="text-sm text-[#8c8a84] font-sans py-2">{t('agents.knowledge_empty')}</p>
+                          <p className="text-sm text-[#5a5a54] font-sans py-2">{t('agents.knowledge_empty')}</p>
                         ) : (
                           (activeAgent.knowledgeMarkdownFiles ?? []).map((f) => (
                             <div
@@ -479,7 +479,7 @@ export function AgentsStudio({ agentConfigs, setAgentConfigs, aiConfig, callAI }
                                 </span>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
-                                <span className="text-[10px] text-[#8c8a84] font-mono">
+                                <span className="text-xs text-[#5a5a54] font-mono">
                                   {t('agents.knowledge_chars', { count: f.content.length })}
                                 </span>
                                 <button
@@ -510,7 +510,7 @@ export function AgentsStudio({ agentConfigs, setAgentConfigs, aiConfig, callAI }
                         <h4 className="font-sans font-bold mb-2">{t('agents.model_params')}</h4>
                         <div className="space-y-4 mt-6">
                           <div className="space-y-1">
-                            <div className="flex justify-between text-[10px] uppercase font-mono tracking-widest text-[#8c8a84] mb-2">
+                            <div className="flex justify-between text-xs uppercase font-mono tracking-widest text-[#5a5a54] mb-2">
                               <span>{t('agents.temp')}</span>
                               <span>{activeAgent.temperature ?? 0.7}</span>
                             </div>
@@ -523,7 +523,7 @@ export function AgentsStudio({ agentConfigs, setAgentConfigs, aiConfig, callAI }
                             />
                           </div>
                           <div className="space-y-1 mt-4">
-                            <div className="flex justify-between text-[10px] uppercase font-mono tracking-widest text-[#8c8a84] mb-2">
+                            <div className="flex justify-between text-xs uppercase font-mono tracking-widest text-[#5a5a54] mb-2">
                               <span>{t('agents.creativity')}</span>
                               <span>{activeAgent.creativity ?? 0.4}</span>
                             </div>
@@ -537,7 +537,7 @@ export function AgentsStudio({ agentConfigs, setAgentConfigs, aiConfig, callAI }
                           </div>
                         </div>
                       </div>
-                      <div className="text-[10px] font-mono text-[#8c8a84] mt-6">
+                      <div className="text-xs font-mono text-[#5a5a54] mt-6">
                         {t('agents.model_params_footer')}
                       </div>
                     </div>
