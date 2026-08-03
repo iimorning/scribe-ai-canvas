@@ -1,6 +1,6 @@
 import { useRef, useState, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { AgentConfig, CanvasNode, Edge as DbEdge, SourceCardSegment } from '../db';
+import type { AgentConfig, CanvasNode, Edge as DbEdge } from '../db';
 import type { AIConfig } from '../components/AISettingsModal';
 import type { CanvasTransform } from './useCanvasInteraction';
 import { callUniversalAI, formatAiError, maskApiKeyForLog } from '../services/ai';
@@ -22,11 +22,6 @@ import {
   resolveImageDataUrlsFromNodeIds,
 } from '../utils/canvasContextImages';
 import { getCanvasNodeContextText } from '../utils/canvasNodeContextText';
-import { parsePublishArticleResponse } from '../utils/parsePublishArticleResponse';
-import {
-  buildPublishSourceMaterial,
-  ensurePublishMediaInBody,
-} from '../utils/publishSourceMaterial';
 import { db } from '../db';
 import { useAppDialog } from '../components/AppDialogProvider';
 import { runCanvasStreamingAiCall } from '../utils/canvasStreamingAi';
@@ -73,6 +68,8 @@ export function useAiActions({
   const { t } = useTranslation();
   const { alert: appAlert } = useAppDialog();
   const [isPublishing, setIsPublishing] = useState(false);
+  const [publishOutlineOpen, setPublishOutlineOpen] = useState(false);
+  const [publishOutlineSelectedIds, setPublishOutlineSelectedIds] = useState<string[]>([]);
   const [isToolbarAiLoading, setIsToolbarAiLoading] = useState(false);
   const [analyzingAgentNodeId, setAnalyzingAgentNodeId] = useState<string | null>(null);
   const [followUpParentId, setFollowUpParentId] = useState<string | null>(null);
@@ -97,6 +94,7 @@ export function useAiActions({
   // second concurrent AI run that races on the same flag.
   const isAnyAiBusy =
     isPublishing ||
+    publishOutlineOpen ||
     isToolbarAiLoading ||
     analyzingAgentNodeId !== null ||
     followUpParentId !== null ||
@@ -104,118 +102,15 @@ export function useAiActions({
     expandingBookNodeId !== null ||
     searchingNoteNodeId !== null;
 
-  const handlePublish = async () => {
+  const handlePublish = () => {
     if (selectedNodes.size === 0 || isAnyAiBusy) return;
-    setIsPublishing(true);
-    try {
-      const selectedIds = Array.from(selectedNodes);
-      const { promptContent, mediaAssets, cards } = buildPublishSourceMaterial(
-        selectedIds,
-        dynamicNodes,
-        (nodeId) => {
-          const el = nodesRef.current[nodeId];
-          return el ? getCanvasNodeContextText(el) : '';
-        },
-        (kind) => t(`canvas.search_type_${kind}`, { defaultValue: kind }),
-        activeCanvasId,
-      );
+    setPublishOutlineSelectedIds(Array.from(selectedNodes));
+    setPublishOutlineOpen(true);
+  };
 
-      const text = await callUniversalAI({
-        config: aiConfig,
-        systemInstruction: getLocaleDirective(),
-        prompt: t('ai.prompts.publish', { content: promptContent }),
-      });
-
-      const parsed = parsePublishArticleResponse(text || '', t('ai.generated_article_title'));
-
-      // 按 cards 顺序对齐 segments：以 cards 为准，匹配 cardId；缺失段补空；多余段忽略
-      const segByCardId = new Map<string, string>();
-      for (const seg of parsed.segments) {
-        if (seg.cardId) segByCardId.set(seg.cardId, seg.text);
-      }
-      let sourceCards: SourceCardSegment[] | undefined;
-      if (segByCardId.size > 0) {
-        sourceCards = cards.map((c) => ({
-          nodeId: c.nodeId,
-          canvasId: c.canvasId,
-          kind: c.kind,
-          title: c.title,
-          segmentText: segByCardId.get(c.nodeId) ?? '',
-        }));
-      }
-      // 若模型未返回带 cardId 的结构化分段（旧格式回退），则不构建 sourceCards，
-      // 走旧文章路径：侧栏显示画布名，正文直接用 content。
-
-      // 媒体兜底：把模型遗漏的媒体追加到对应卡片段（按 nodeId 匹配），否则追加到末尾段
-      const missingMedia = mediaAssets.filter((asset) => {
-        const md = asset.articleMarkdown;
-        const urls = [...md.matchAll(/\(([^)\s]+)\)/g)].map((m) => m[1]!);
-        if (urls.length === 0) {
-          const title = md.replace(/[*\[\]]/g, '').trim();
-          return title.length > 0 && !parsed.body.includes(title);
-        }
-        return urls.some((u) => u && !parsed.body.includes(u));
-      });
-
-      let body = parsed.body;
-      if (sourceCards && missingMedia.length > 0) {
-        const relatedHeading = t('ai.publish_related_media');
-        const heading = relatedHeading.replace(/\s+/g, ' ').trim() || 'Related media';
-        // 追加到拥有该媒体卡片的段；找不到则追加到末尾段
-        for (const asset of missingMedia) {
-          const idx = sourceCards.findIndex((sc) => sc.nodeId === asset.nodeId);
-          const attach = `\n\n## ${heading}\n\n${asset.articleMarkdown}`;
-          if (idx >= 0) {
-            sourceCards[idx] = {
-              ...sourceCards[idx],
-              segmentText: `${sourceCards[idx].segmentText}${attach}`.trim(),
-            };
-          } else {
-            const last = sourceCards.length - 1;
-            sourceCards[last] = {
-              ...sourceCards[last],
-              segmentText: `${sourceCards[last].segmentText}${attach}`.trim(),
-            };
-          }
-        }
-        body = sourceCards.map((s) => s.segmentText).join('\n\n');
-      } else {
-        body = ensurePublishMediaInBody(
-          parsed.body,
-          mediaAssets,
-          t('ai.publish_related_media'),
-        );
-        // 若结构化分段存在但媒体兜底未触发，仍以分段拼接为准（保证正文与卡片一致）
-        if (sourceCards) {
-          body = sourceCards.map((s) => s.segmentText).join('\n\n');
-        }
-      }
-
-      const newArticle = {
-        id: `gen-${Date.now()}`,
-        title: parsed.title,
-        content: body,
-        date: new Date().getFullYear().toString(),
-        type: 'GEN-' + Math.floor(Math.random() * 1000),
-        tags: [] as string[],
-        linkedCanvasIds: [activeCanvasId],
-        author: '',
-        ...(sourceCards ? { sourceCards } : {}),
-      };
-
-      await db.articles.add(newArticle);
-      setActiveReferenceId(newArticle.id);
-      setActiveTab('reference');
-      setSelectedNodes(new Set());
-    } catch (e) {
-      const msg = formatAiError(e);
-      console.error('[Spoor] handlePublish failed', { error: msg, provider: aiConfig.provider, model: aiConfig.model, apiKey: maskApiKeyForLog(aiConfig.apiKey) });
-      void appAlert({
-        message: `合成失败\n\n${msg}\n\n打开开发者工具 (F12) → Console 查看 [Spoor] 日志。`,
-      });
-    } finally {
-      setIsPublishing(false);
-    }
+  const closePublishOutlineDialog = () => {
+    setPublishOutlineOpen(false);
+    setPublishOutlineSelectedIds([]);
   };
 
   const triggerAgentAnalysis = async (agentConfigId: string, agentNodeId: string, contextNodeId: string) => {
@@ -865,6 +760,9 @@ export function useAiActions({
 
   return {
     isPublishing,
+    publishOutlineOpen,
+    publishOutlineSelectedIds,
+    closePublishOutlineDialog,
     isToolbarAiLoading,
     analyzingAgentNodeId,
     followUpParentId,

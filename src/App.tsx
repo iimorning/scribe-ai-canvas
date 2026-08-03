@@ -16,6 +16,7 @@ import { NOTE_LAYOUT_COUNT } from './constants/noteLayouts';
 import { CanvasEdgeLines } from './components/canvas/CanvasEdgeLines';
 import { DraggableNode } from './components/canvas/DraggableNode';
 import { AISettingsModal } from './components/AISettingsModal';
+import { PublishOutlineDialog } from './components/PublishOutlineDialog';
 import { Sidebar } from './components/Sidebar';
 import { CanvasHistoryPopover } from './components/CanvasHistoryPopover';
 import { CanvasNoteSearch } from './components/CanvasNoteSearch';
@@ -442,7 +443,9 @@ export default function App() {
 
   // AI actions (publish, agent analysis, AI submit)
   const {
-    isPublishing,
+    publishOutlineOpen,
+    publishOutlineSelectedIds,
+    closePublishOutlineDialog,
     isToolbarAiLoading,
     analyzingAgentNodeId,
     followUpParentId,
@@ -761,9 +764,9 @@ export default function App() {
                     ? 'bg-[#C2410C] text-white border-[#a0350a]/50 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100'
                     : 'bg-white text-[#1a1a1a] border-[#E6E4DF] hover:scale-105 hover:border-[#C2410C] hover:text-[#C2410C] disabled:opacity-50 disabled:hover:scale-100 disabled:hover:border-[#E6E4DF] disabled:hover:text-[#1a1a1a]'
                 }`}
-                title={isPublishing ? t('nodes.ai_loading') : `${t('sidebar.publish')} (${selectedNodes.size})`}
+                title={`${t('sidebar.publish')} (${selectedNodes.size})`}
               >
-                {isPublishing ? <Loader2 className="w-5 h-5 animate-spin" /> : <PenLine className="w-5 h-5" />}
+                {publishOutlineOpen ? <Loader2 className="w-5 h-5 animate-spin" /> : <PenLine className="w-5 h-5" />}
               </button>
               
               <button
@@ -980,6 +983,18 @@ export default function App() {
           await Promise.all(newConfigs.map((config) => db.agents.put(config)));
         }} aiConfig={aiConfig} callAI={callUniversalAI} />}
         <AISettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} config={aiConfig} setConfig={setAiConfig} />
+        <PublishOutlineDialog
+          open={publishOutlineOpen}
+          onClose={closePublishOutlineDialog}
+          aiConfig={aiConfig}
+          selectedIds={publishOutlineSelectedIds}
+          dynamicNodes={dynamicNodes}
+          nodesRef={nodesRef}
+          activeCanvasId={activeCanvasId}
+          setActiveReferenceId={setActiveReferenceId}
+          setActiveTab={setActiveTab}
+          setSelectedNodes={setSelectedNodes}
+        />
       </div>
     </div>
   );
