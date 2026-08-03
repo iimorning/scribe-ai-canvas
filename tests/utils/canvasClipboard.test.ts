@@ -75,4 +75,21 @@ describe('canvasClipboard v2', () => {
     expect(snap.nodes).toHaveLength(1);
     expect(snap.edges.map((e) => e.id).sort()).toEqual(['e1', 'e2']);
   });
+
+  it('skips corrupt nodes instead of rejecting the whole payload', () => {
+    const raw = JSON.stringify({
+      kind: CANVAS_CLIPBOARD_KIND,
+      nodes: [
+        { type: 'text', x: 0, y: 0 },                   // ok
+        null,                                            // bad: null item
+        { type: '', x: 0, y: 0 },                       // bad: empty type
+        { type: 'ai', x: 'NaN', y: 0 },                 // bad: non-number x
+        { type: 'book', x: 10, y: 20, content: '{}' },  // ok
+      ],
+    });
+    const parsed = parseCanvasClipboardPayload(raw);
+    expect(parsed?.kind).toBe(CANVAS_CLIPBOARD_KIND);
+    expect(parsed?.nodes).toHaveLength(2);
+    expect(parsed?.nodes.map((n) => n.type)).toEqual(['text', 'book']);
+  });
 });

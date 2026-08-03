@@ -73,12 +73,16 @@ export function parseCanvasClipboardPayload(raw: string): CanvasClipboardPayload
     const rec = o as Record<string, unknown>;
     if (rec.kind !== CANVAS_CLIPBOARD_KIND || !Array.isArray(rec.nodes)) return null;
 
+    // Per-node validation rather than whole-payload reject: a single corrupt
+    // card used to silently abort paste, leaving the user with no fallback.
+    // Now we skip bad rows and continue; edges that no longer reference a
+    // surviving node key get dropped by the keySet check below.
     const nodes: CanvasClipboardNodeV2[] = [];
     for (const item of rec.nodes) {
-      if (!item || typeof item !== 'object') return null;
+      if (!item || typeof item !== 'object') continue;
       const n = item as Record<string, unknown>;
-      if (typeof n.type !== 'string' || !n.type) return null;
-      if (!isFiniteNumber(n.x) || !isFiniteNumber(n.y)) return null;
+      if (typeof n.type !== 'string' || !n.type) continue;
+      if (!isFiniteNumber(n.x) || !isFiniteNumber(n.y)) continue;
       const key = typeof n.key === 'string' && n.key ? n.key : crypto.randomUUID();
       const copy = { ...(n as object) } as Record<string, unknown>;
       delete copy.id;
