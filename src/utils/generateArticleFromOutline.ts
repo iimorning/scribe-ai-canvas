@@ -51,25 +51,49 @@ export async function generateArticleFromOutline({
 
   const parsed = parsePublishArticleResponse(text || '', t('ai.generated_article_title'));
 
-  // 仅保留大纲中出现的 cardId（用户删除的条目不写入 sourceCards；大纲完全不含原 cardId 视为不需要 sourceCards 链路）
-  const outlineCardIds = new Set(outline.sections.map((s) => s.cardId).filter(Boolean));
+  // 大纲中仍绑定来源卡的 cardId（按大纲顺序去重）。用户删段或清空 cardId 的不进侧栏。
+  const outlineOrderedCardIds: string[] = [];
+  const outlineCardIds = new Set<string>();
+  for (const s of outline.sections) {
+    const id = (s.cardId || '').trim();
+    if (!id || outlineCardIds.has(id)) continue;
+    outlineCardIds.add(id);
+    outlineOrderedCardIds.push(id);
+  }
 
-  // 按 cards 顺序对齐 segments：以 cards 为准，匹配 cardId；缺失段补空；多余段忽略
+  const cardById = new Map(cards.map((c) => [c.nodeId, c]));
+  const eligibleCards = outlineOrderedCardIds
+    .map((id) => cardById.get(id))
+    .filter((c): c is PublishSourceCardMeta => c != null);
+
   const segByCardId = new Map<string, string>();
   for (const seg of parsed.segments) {
     if (seg.cardId) segByCardId.set(seg.cardId, seg.text);
   }
+
+  // 模型未带回 cardId 时，按段顺序与大纲卡一一对应（常见于漏字段但仍按序输出）
+  const orderedSegTexts: string[] = [];
+  if (segByCardId.size === 0 && parsed.segments.length === eligibleCards.length) {
+    for (let i = 0; i < parsed.segments.length; i++) {
+      orderedSegTexts[i] = parsed.segments[i]?.text ?? '';
+    }
+  }
+
+  // 只要大纲仍挂着来源卡，就写 sourceCards，保证 Reference 侧栏「关联画布」出现。
+  // 不再要求模型 segments 必须带 cardId（否则 {title,body} 回退会把侧栏弄没）。
   let sourceCards: SourceCardSegment[] | undefined;
-  if (segByCardId.size > 0 && outlineCardIds.size > 0) {
-    const eligibleCards = cards.filter((c) => outlineCardIds.has(c.nodeId));
-    if (eligibleCards.length > 0) {
-      sourceCards = eligibleCards.map((c) => ({
-        nodeId: c.nodeId,
-        canvasId: c.canvasId,
-        kind: c.kind,
-        title: c.title,
-        segmentText: segByCardId.get(c.nodeId) ?? '',
-      }));
+  if (eligibleCards.length > 0) {
+    sourceCards = eligibleCards.map((c, i) => ({
+      nodeId: c.nodeId,
+      canvasId: c.canvasId,
+      kind: c.kind,
+      title: c.title,
+      segmentText: segByCardId.get(c.nodeId) ?? orderedSegTexts[i] ?? '',
+    }));
+    const hasAnySegment = sourceCards.some((s) => s.segmentText.trim());
+    if (!hasAnySegment && parsed.body.trim()) {
+      // 整篇 body 回退：挂到第一张卡，侧栏卡片列表仍保留
+      sourceCards[0] = { ...sourceCards[0], segmentText: parsed.body.trim() };
     }
   }
 
@@ -102,7 +126,10 @@ export async function generateArticleFromOutline({
         };
       }
     }
-    body = sourceCards.map((s) => s.segmentText).join('\n\n');
+    body = sourceCards
+      .map((s) => s.segmentText.trim())
+      .filter(Boolean)
+      .join('\n\n');
   } else {
     // 非 sourceCards 链路：用 ensurePublishMediaInBody 把遗漏媒体补到正文末尾
     body = ensurePublishMediaInBody(parsed.body, mediaAssets, relatedHeading);

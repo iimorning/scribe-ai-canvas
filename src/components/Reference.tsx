@@ -8,16 +8,10 @@ import {
   Plus,
   Search,
   Link2,
-  BookOpen,
   X,
   Trash2,
   GripVertical,
   Pencil,
-  FileText,
-  Image as ImageIcon,
-  Video as VideoIcon,
-  Layers,
-  Type,
 } from 'lucide-react';
 import { db } from '../db';
 import type { Article, SourceCardSegment } from '../db';
@@ -34,25 +28,6 @@ function articleMatchesSearch(a: Article, q: string): boolean {
     a.type.toLowerCase().includes(low) ||
     (a.content ?? '').toLowerCase().includes(low)
   );
-}
-
-/** 把卡片类型映射到侧栏图标 */
-function CardKindIcon({ kind, className }: { kind: string; className?: string }) {
-  switch (kind) {
-    case 'image':
-      return <ImageIcon className={className} />;
-    case 'video':
-      return <VideoIcon className={className} />;
-    case 'book':
-      return <BookOpen className={className} />;
-    case 'theme':
-      return <Layers className={className} />;
-    case 'note':
-    case 'text':
-      return <Type className={className} />;
-    default:
-      return <FileText className={className} />;
-  }
 }
 
 export interface ReferenceProps {
@@ -557,8 +532,8 @@ export function Reference({
         )}
       </div>
 
-      <div className="w-72 bg-white flex-shrink-0 flex flex-col font-sans text-xs">
-          <div className="p-4 border-b border-[#E6E4DF] font-bold text-[#1a1a1a] h-14 flex items-center bg-[#F4F1ED]/50">
+      <div className="w-96 bg-white flex-shrink-0 flex flex-col font-sans text-sm">
+          <div className="px-5 py-4 border-b border-[#E6E4DF] font-bold text-[#1a1a1a] text-base h-14 flex items-center bg-[#F4F1ED]/50">
             {hasSourceCards ? (
               t('reference.linked_drafts')
             ) : (
@@ -572,7 +547,7 @@ export function Reference({
                       type="button"
                       onClick={() => onOpenCanvas?.(cid)}
                       disabled={!onOpenCanvas}
-                      className="flex items-center gap-1 min-w-0 font-semibold text-[#1a1a1a] text-[11px] hover:text-[#C2410C] hover:underline disabled:opacity-40"
+                      className="flex items-center gap-1.5 min-w-0 font-semibold text-[#1a1a1a] text-sm hover:text-[#C2410C] hover:underline disabled:opacity-40"
                     >
                       <Link2 className="w-4 h-4 text-[#C2410C] shrink-0" />
                       <span className="truncate font-normal">{c?.name ?? cid}</span>
@@ -582,17 +557,23 @@ export function Reference({
               </div>
             )}
           </div>
-          <div className="p-6 space-y-4 overflow-y-auto">
+          <div className="p-5 space-y-3 overflow-y-auto">
             {hasSourceCards ? (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {sourceCards.map((seg, idx) => {
                   const isEditing = sidebarEditId === seg.nodeId;
                   const isDragOver = dragOverIndex === idx && dragIndex !== null && dragIndex !== idx;
+                  const previewRaw = seg.segmentText
+                    .replace(/[#>*`\[\]()!|-]/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                  const preview =
+                    previewRaw.length > 90 ? `${previewRaw.slice(0, 90)}…` : previewRaw;
                   return (
                     <div
                       key={seg.nodeId}
                       data-testid={`reference-source-card-${idx}`}
-                      draggable
+                      draggable={!isEditing}
                       onDragStart={() => handleDragStart(idx)}
                       onDragOver={(e) => handleDragOver(e, idx)}
                       onDrop={(e) => handleDrop(e, idx)}
@@ -600,63 +581,85 @@ export function Reference({
                         setDragIndex(null);
                         setDragOverIndex(null);
                       }}
-                      className={`flex items-start gap-2 p-3 bg-[#FAF9F6] border rounded transition-all ${
+                      className={`flex items-start gap-3 p-4 bg-[#FAF9F6] border rounded-xl transition-all ${
                         isDragOver
                           ? 'border-[#C2410C] bg-[#F4F1ED] shadow-sm'
                           : 'border-[#E6E4DF]'
                       } ${dragIndex === idx ? 'opacity-50' : ''}`}
                     >
                       <GripVertical
-                        className="w-4 h-4 text-[#8c8a84] mt-0.5 shrink-0 cursor-grab"
+                        className="w-5 h-5 text-[#8c8a84] mt-0.5 shrink-0 cursor-grab"
                         aria-label={t('reference.drag_card')}
                       />
-                      <CardKindIcon kind={seg.kind} className="w-4 h-4 text-[#C2410C] mt-0.5 shrink-0" />
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-1">
+                        <div className="flex items-start justify-between gap-2">
                           <button
                             type="button"
                             onClick={() => onOpenCanvas?.(seg.canvasId)}
-                            className="font-semibold text-[#1a1a1a] text-[11px] text-left hover:text-[#C2410C] hover:underline min-w-0 truncate"
+                            className="font-semibold text-[#1a1a1a] text-sm leading-snug text-left hover:text-[#C2410C] hover:underline min-w-0 line-clamp-2"
                             disabled={!onOpenCanvas}
                             title={seg.title}
                           >
                             {seg.title || t('reference.untitled_card')}
                           </button>
-                          <div className="flex shrink-0 items-center gap-0.5">
+                          <div className="flex shrink-0 items-center gap-1">
                             <button
                               type="button"
                               data-testid={`reference-source-card-edit-${idx}`}
+                              // preventDefault 避免 textarea blur 先关掉编辑、click 又立刻重新打开
+                              onMouseDown={(e) => e.preventDefault()}
                               onClick={() =>
                                 isEditing ? void commitSidebarEdit() : startSidebarEdit(seg)
                               }
-                              className="rounded p-0.5 text-[#8c8a84] hover:bg-[#EAE7E2] hover:text-[#1a1a1a]"
-                              title={t('reference.edit_card')}
-                              aria-label={t('reference.edit_card')}
+                              className={`rounded-md p-1.5 hover:bg-[#EAE7E2] ${
+                                isEditing
+                                  ? 'text-[#C2410C] bg-[#FFF7ED]'
+                                  : 'text-[#8c8a84] hover:text-[#1a1a1a]'
+                              }`}
+                              title={isEditing ? t('reference.done_edit_card') : t('reference.edit_card')}
+                              aria-label={isEditing ? t('reference.done_edit_card') : t('reference.edit_card')}
                             >
-                              <Pencil className="w-3.5 h-3.5" />
+                              <Pencil className="w-4 h-4" />
                             </button>
                             <button
                               type="button"
                               data-testid={`reference-source-card-delete-${idx}`}
+                              onMouseDown={(e) => e.preventDefault()}
                               onClick={() => void handleDeleteSourceCard(seg.nodeId)}
-                              className="rounded p-0.5 text-[#8c8a84] hover:bg-[#EAE7E2] hover:text-[#C2410C]"
+                              className="rounded-md p-1.5 text-[#8c8a84] hover:bg-[#EAE7E2] hover:text-[#C2410C]"
                               title={t('reference.delete_card')}
                               aria-label={t('reference.delete_card')}
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
                         </div>
+                        {!isEditing && preview && (
+                          <p className="mt-2 text-[13px] leading-relaxed text-[#5a5a54]">
+                            {preview}
+                          </p>
+                        )}
                         {isEditing && (
-                          <textarea
-                            data-testid={`reference-source-card-textarea-${idx}`}
-                            value={sidebarEditText}
-                            onChange={(e) => onSidebarEditTextChange(e.target.value)}
-                            onBlur={() => void commitSidebarEdit()}
-                            autoFocus
-                            className="mt-2 w-full h-32 bg-white border border-[#E6E4DF] rounded-md p-2 text-[#5a5a54] resize-none focus:outline-none focus:border-[#C2410C] focus:ring-1 focus:ring-[#C2410C] shadow-sm font-sans text-[11px]"
-                            placeholder={t('reference.edit_card_placeholder')}
-                          />
+                          <div className="mt-3 space-y-2">
+                            <textarea
+                              data-testid={`reference-source-card-textarea-${idx}`}
+                              value={sidebarEditText}
+                              onChange={(e) => onSidebarEditTextChange(e.target.value)}
+                              onBlur={() => void commitSidebarEdit()}
+                              autoFocus
+                              className="w-full h-40 bg-white border border-[#E6E4DF] rounded-lg p-3 text-[#5a5a54] resize-none focus:outline-none focus:border-[#C2410C] focus:ring-1 focus:ring-[#C2410C] shadow-sm font-sans text-sm leading-relaxed"
+                              placeholder={t('reference.edit_card_placeholder')}
+                            />
+                            <button
+                              type="button"
+                              data-testid={`reference-source-card-done-${idx}`}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => void commitSidebarEdit()}
+                              className="w-full py-1.5 rounded-lg text-sm font-sans font-medium border border-[#E6E4DF] bg-white text-[#1a1a1a] hover:bg-[#F4F1ED] transition-colors"
+                            >
+                              {t('reference.done_edit_card')}
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -664,7 +667,7 @@ export function Reference({
                 })}
               </div>
             ) : linkedIds.length === 0 ? (
-              <p className="text-[11px] text-[#8c8a84]">{t('reference.linked_empty')}</p>
+              <p className="text-sm text-[#8c8a84]">{t('reference.linked_empty')}</p>
             ) : null}
           </div>
         </div>

@@ -88,7 +88,7 @@ describe('generateArticleFromOutline', () => {
     expect(article.content).toBe('## 段一\n\n第一段正文。\n\n## 段二\n\n第二段正文。');
   });
 
-  it('旧 {title, body} 格式：无 segments → 不构建 sourceCards，正文用模型 body', async () => {
+  it('旧 {title, body} 格式且大纲无 cardId → 不构建 sourceCards，正文用模型 body', async () => {
     vi.mocked(callUniversalAI).mockResolvedValueOnce(
       JSON.stringify({ title: '旧格式标题', body: '单段正文' }),
     );
@@ -105,6 +105,27 @@ describe('generateArticleFromOutline', () => {
 
     expect(article.title).toBe('旧格式标题');
     expect(article.sourceCards).toBeUndefined();
+    expect(article.content).toBe('单段正文');
+  });
+
+  it('旧 {title, body} 格式但大纲仍有 cardId → 仍构建 sourceCards（关联画布），body 挂到第一张卡', async () => {
+    vi.mocked(callUniversalAI).mockResolvedValueOnce(
+      JSON.stringify({ title: '旧格式标题', body: '单段正文' }),
+    );
+
+    const article = await generateArticleFromOutline({
+      aiConfig: baseAiConfig,
+      outline: makeOutline(),
+      promptContent: 'p',
+      mediaAssets: [],
+      cards: makeCards(),
+      activeCanvasId: 'cv',
+      t,
+    });
+
+    expect(article.sourceCards).toHaveLength(2);
+    expect(article.sourceCards![0].segmentText).toBe('单段正文');
+    expect(article.sourceCards![1].segmentText).toBe('');
     expect(article.content).toBe('单段正文');
   });
 
