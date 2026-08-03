@@ -137,4 +137,32 @@ describe('findOpenCanvasPosition', () => {
     expect(rectsOverlap(placed, estimateNodeRect(book), 28)).toBe(false);
     expect(rectsOverlap(placed, estimateNodeRect(blocker), 28)).toBe(false);
   });
+
+  it('大面积占位时用小步长螺旋，避免一次跳开一整簇宽高', () => {
+    const book = { type: 'book', x: 100, y: 80, width: 380, height: 520 };
+    const cluster = { width: 900, height: 1180 };
+    const beside = positionBesideRect(estimateNodeRect(book), cluster, 36);
+    const blocker = {
+      type: 'note',
+      x: beside.x + 40,
+      y: beside.y + 40,
+      width: 200,
+      height: 160,
+    };
+    const pos = findOpenCanvasPosition({
+      transform: { x: 0, y: 0, scale: 1 },
+      obstacles: [book, blocker],
+      size: cluster,
+      preferBeside: book,
+      gap: 36,
+      step: { width: 280 + 36, height: 160 + 36 },
+      maxRings: 24,
+    });
+    const placed = { ...pos, ...cluster };
+    expect(rectsOverlap(placed, estimateNodeRect(book), 36)).toBe(false);
+    expect(rectsOverlap(placed, estimateNodeRect(blocker), 36)).toBe(false);
+    // Should stay near the preferred seed — not a full-cluster jump.
+    expect(Math.abs(pos.x - beside.x)).toBeLessThan(cluster.width);
+    expect(Math.abs(pos.y - beside.y)).toBeLessThan(cluster.height);
+  });
 });

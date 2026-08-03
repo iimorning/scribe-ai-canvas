@@ -103,9 +103,15 @@ describe('NoteNode', () => {
     expect(container.querySelector('.note-glass-wash')).toBeTruthy();
   });
 
-  it('layout 3 显示观察标签键', () => {
-    render(<NoteNode node={makeNode({ layout: 3 })} editingNodeId={null} setEditingNodeId={vi.fn()} />);
-    expect(screen.getByText('nodes.observation')).toBeInTheDocument();
+  it('layout 0/3 不显示笔记类型标签，正文从顶部起排', () => {
+    const { rerender } = render(
+      <NoteNode node={makeNode({ layout: 0 })} editingNodeId={null} setEditingNodeId={vi.fn()} />,
+    );
+    expect(screen.queryByText('nodes.note')).not.toBeInTheDocument();
+    expect(screen.queryByText('nodes.observation')).not.toBeInTheDocument();
+    rerender(<NoteNode node={makeNode({ layout: 3 })} editingNodeId={null} setEditingNodeId={vi.fn()} />);
+    expect(screen.queryByText('nodes.note')).not.toBeInTheDocument();
+    expect(screen.queryByText('nodes.observation')).not.toBeInTheDocument();
   });
 
   it('连续 rerender 切换 layout 时 Markdown 正文仍可见（NoteBody 稳定）', () => {

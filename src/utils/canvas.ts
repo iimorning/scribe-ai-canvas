@@ -72,11 +72,18 @@ export function positionBesideRect(
 /**
  * Find a non-overlapping canvas position for a new node.
  * Starts beside `preferBeside` (if given) or at viewport center, then walks a square spiral.
+ *
+ * `size` is the reserved footprint that must be free; `step` controls how far each
+ * spiral ring moves. When omitted, step is capped to a normal card size so large
+ * footprints (e.g. book-voice hub+lane) still search nearby instead of jumping a
+ * full cluster width/height per ring.
  */
 export function findOpenCanvasPosition(options: {
   transform: CanvasTransformLike;
   obstacles: CanvasObstacle[];
   size?: { width: number; height: number };
+  /** Spiral ring increment; defaults to min(size, DEFAULT_NODE_SIZE) + gap. */
+  step?: { width: number; height: number };
   gap?: number;
   preferBeside?: CanvasObstacle | null;
   maxRings?: number;
@@ -92,8 +99,10 @@ export function findOpenCanvasPosition(options: {
   }
   seeds.push(getCanvasCenterPosition(options.transform));
 
-  const stepX = size.width + gap;
-  const stepY = size.height + gap;
+  const stepX =
+    options.step?.width ?? Math.min(size.width, DEFAULT_NODE_SIZE.width) + gap;
+  const stepY =
+    options.step?.height ?? Math.min(size.height, DEFAULT_NODE_SIZE.height) + gap;
 
   for (const seed of seeds) {
     for (let ring = 0; ring <= maxRings; ring++) {

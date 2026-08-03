@@ -75,25 +75,13 @@ export function NoteLayoutStandard({
         onToggle={onToggleWebSearchSources}
       />
 
-      {isGlass ? (
+      {isGlass && (
         <header className="note-chrome relative z-10 flex shrink-0 items-center justify-between px-6 pt-6 mb-4">
           <Sparkles className="h-7 w-7 shrink-0" strokeWidth={1.5} aria-hidden />
           <span className="text-right font-sans text-[12px] font-semibold uppercase leading-none tracking-[0.05em] opacity-80">
             {t('nodes.thought_node')}
           </span>
         </header>
-      ) : (
-        <div className={`relative z-10 flex items-center space-x-2 ${layout === 3 ? '' : 'mb-2'}`}>
-          <span
-            className={`note-chrome font-sans uppercase tracking-wider transition-[color,background-color,padding,font-size] duration-500 ${
-              layout === 3
-                ? 'neo-brut-badge bg-[#1b1b1c] px-2 py-1 text-[12px] font-semibold leading-none'
-                : 'note-chrome-muted text-[10px] font-bold'
-            }`}
-          >
-            {node.type === 'note' ? t('nodes.observation') : t('nodes.note')}
-          </span>
-        </div>
       )}
 
       <NoteBody

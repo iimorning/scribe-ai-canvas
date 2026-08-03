@@ -108,11 +108,6 @@ export function ThemeNode({
           }`}
         >
           <Layers2 className="h-3.5 w-3.5" aria-hidden />
-          <span>
-            {bookExpandBranchesCollapsed
-              ? t('nodes.expand_book_branches_short')
-              : t('nodes.collapse_book_branches_short')}
-          </span>
           <span className={`tabular-nums ${node.layout === 2 ? 'text-white/45' : 'text-[#a8a6a0]'}`}>
             {bookExpandBranchCount}
           </span>
@@ -121,7 +116,6 @@ export function ThemeNode({
       <div className={`flex items-center space-x-2 mb-3 ${node.layout === 3 ? 'hidden' : ''}`}>
         <Sparkles className={`w-3 h-3 ${node.layout === 2 ? 'text-[#C2410C]' : 'text-[#C2410C]'}`} />
         <span className={`text-[10px] font-sans font-bold uppercase tracking-widest ${node.layout === 2 ? 'text-[#8c8a84]' : 'text-[#C2410C]'}`}>{t('nodes.theme')}</span>
-        <div className={`h-px flex-1 ${node.layout === 2 ? 'bg-white/10' : 'bg-[#F4F1ED]'}`}></div>
       </div>
 
       {node.layout === 3 && (

@@ -413,13 +413,19 @@ export function BookNode({
       const cluster = bookExpandClusterSize(branchCount);
       const transform = canvasTransformRef.current ?? { x: 0, y: 0, scale: 1 };
       const obstacles = (canvasNodesRef.current ?? []).filter((n) => n.id !== node.id);
-      // Reserve the full hub+lane footprint in open space beside the book.
+      // Reserve the full hub+lane footprint beside the book, but spiral with a
+      // hub-sized step so a nearby blocker does not fling the cluster far away.
       const open = findOpenCanvasPosition({
         transform,
         obstacles: [node, ...obstacles],
         size: cluster,
         preferBeside: node,
         gap: 36,
+        step: {
+          width: BOOK_EXPAND_HUB_WIDTH + 36,
+          height: BOOK_EXPAND_HUB_HEIGHT + 36,
+        },
+        maxRings: 24,
       });
       const hubPos = {
         x: open.x,
