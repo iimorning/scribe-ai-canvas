@@ -514,14 +514,9 @@ export function useAiActions({
 
   const handleAiSubmit = async () => {
     const raw = aiPrompt.trim();
-    if (
-      !raw ||
-      isPublishing ||
-      isToolbarAiLoading ||
-      analyzingAgentNodeId !== null ||
-      followUpParentId !== null ||
-      streamingAiNodeId !== null
-    ) {
+    // Reuse the consolidated `isAnyAiBusy` flag instead of re-listing fields here;
+    // new busy states (book expand / note search) automatically flow through.
+    if (!raw || isAnyAiBusy) {
       return;
     }
 
